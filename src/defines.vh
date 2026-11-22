@@ -10,8 +10,8 @@
 `define OP_SUB   4'h2
 `define OP_ADDI  4'h3  //can be used for subtraction
 
-`define OP_STORE   4'h4
-`define OP_LOAD   4'h5  //store and load to/from sram
+`define OP_STORE 4'h4
+`define OP_LOAD  4'h5  //store and load to/from sram
 
 `define OP_SHL   4'h6
 `define OP_SHR   4'h7
