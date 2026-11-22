@@ -29,6 +29,12 @@ localparam PROGRAM = 2'B00,
            HALT    = 2'B10;
            READ_WAIT = 2'B11;
 
+reg [4:0] pc = 5'd0; // program counter
+reg [11:0] instruction_memory [0:31]; // 32 instructions of 12 bits each
+reg [11:0] write_pointer = 5'd0;      // points to the next instruction to be written in instruction memory
+
+
+
 
 
 wire [11:0] instruction = {uio_in[3:0], ui_in[7:0]};// instruction input
@@ -64,12 +70,11 @@ always @(posedge clk) begin
     b <= 8'h00;
     output_reg <= 8'h00;
     reading <= 1'b0;
+    state <= PROGRAM;
   end
   case (state)
     PROGRAM: begin
-      if (OP_CODE == 'OP_LOAD) begin
-        reading <= 1'b1; // set reading flag when load instruction is encountered
-      end
+      
     end
     EXECUTE: begin
       case (OP_CODE)begin
@@ -78,7 +83,7 @@ always @(posedge clk) begin
         'OP_ADDI:    a <= a + instruction[7:0];       // TO SUBTRACT, JUST ADDI A VALUE SUCH THAT IT OVERFLOWS AND EFFECTIVELY SUBTRACTS
         'OP_LDI:     a <= instruction[7:0];           // load immediate value into register a
         'OP_STORE:;                                   //nothing happens
-        'OP_LOAD:    reading <= 1'b1;
+        'OP_LOAD:    next_state <= READ_WAIT;                  // go to READ_WAIT state to read from sram
 
         'OP_OUT:  output_reg <= a;                    // output value of register a to output register
 
@@ -94,21 +99,11 @@ always @(posedge clk) begin
       end
     end
     READ_WAIT: begin
-      if (!reading) begin
-        state <= PROGRAM; // go back to PROGRAM state after reading from sram
-      end
+      b <= sram_dout;  // read data from sram into register b
+      next_state <= EXECUTE; // reset reading flag after reading from sram
     end
     HALT: begin
       // do nothing, halt the processor
     end
-
-  else begin
-    b <= sram_dout;  // read data from sram into register b
-    reading <= 1'b0; // reset reading flag after reading from sram
-  end
-
-  
-end
-
-
+  endcase
 endmodule
