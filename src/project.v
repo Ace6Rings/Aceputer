@@ -35,12 +35,8 @@ always @(posedge clk) begin
     'op_LDI: begin
       a <= ui_in[7:0];
     end
-    'op_LDB: begin
-      b <= ui_in[7:0];
-    end
-    'op_MUL: begin
-      a <= a * b;
-    end
+    'op_STORE: begin
+      
     default: begin
       a <= 8'h00;
       b <= 8'h00;
