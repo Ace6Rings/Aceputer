@@ -24,4 +24,13 @@ module tt_um_example (
   // List all unused inputs to prevent warnings
   wire _unused = &{ena, clk, rst_n, 1'b0};
 
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      acc <= 8'h00;  // Reset accumulator to 0
+    end else begin
+      ui_in <= acc;
+    end
+  end
+  assign uo_out = acc;
+
 endmodule
