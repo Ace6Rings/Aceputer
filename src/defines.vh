@@ -1,4 +1,4 @@
-'ifndef defines_vh
+`ifndef defines_vh
 `define defines_vh
 
 // OPCODES
@@ -18,14 +18,14 @@
 
 `define OP_LDI   4'h8
 `define OP_LDB   4'h9
-`define SWAP     4'hA
+`define OP_MOV   4'hA
 
-`define IN       4'hB
+`define MUL      4'hB
 `define OP_OUT   4'hC
 
 `define OP_JZ    4'hD
 `define OP_JNZ   4'hE
 `define OP_HALT  4'hF
 
-'endif
+`endif
 
