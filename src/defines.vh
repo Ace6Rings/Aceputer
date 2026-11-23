@@ -21,7 +21,7 @@
 `define OP_MOV   4'hA
 
 `define MUL      4'hB
-`define OP_OUT   4'hC
+`define OP_LDIH  4'hC
 
 `define OP_JZ    4'hD
 `define OP_JNZ   4'hE
