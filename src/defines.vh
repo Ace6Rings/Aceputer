@@ -17,10 +17,10 @@
 `define OP_SHR   4'h7
 
 `define OP_LDI   4'h8
-//no 4'h9
+`define OP_XOR   4'h9
 `define OP_MOV   4'hA
 
-//no 4'c
+`define OP_AND   4'hC
 
 `define OP_JZ    4'hD
 `define OP_JNZ   4'hE

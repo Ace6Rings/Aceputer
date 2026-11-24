@@ -124,6 +124,10 @@ always @(posedge clk) begin
           if (rd != 3'b000)
             reg_file[rd] <= reg_file[rd] + instruction[8:1]; // TO SUBTRACT, JUST ADDI A VALUE SUCH THAT IT OVERFLOWS AND EFFECTIVELY SUBTRACTS
          end
+         `OP_AND: if(rd != 3'b000)
+                   reg_file[rd] <= reg_file[rs1] & reg_file[rs2];
+         `OP_XOR: if(rd != 3'b000)
+                   reg_file[rd] <= reg_file[rs1] & reg_file[rs2];   
          `OP_LDI: if (rd != 3'b000)
                     reg_file[rd] <= instruction[8:1];
          `OP_STORE:;    //nothing happens                    
