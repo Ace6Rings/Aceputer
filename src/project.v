@@ -38,8 +38,8 @@ reg [2:0] state;
 
 // Instruction memory and program counter
 reg [4:0] pc; // program counter
-reg [15:0] instruction_memory [0:31]; // 32 instructions of 16 bits each
-reg [4:0] write_pointer;    // points to the next instruction to be written in instruction memory
+reg [15:0] instruction_memory [0:1]; // 2 instructions of 16 bits each. buffer while read sram
+reg write_pointer;    // points to the next instruction to be written in instruction memory 
 
 
 // Instruction decoding
@@ -61,7 +61,7 @@ assign rs2  = instruction[5:3];
 
 
 // SRAM 
-wire sram_str  = rst_n && (state != READ_WAIT) && (OP_CODE == `OP_STORE) && (state == EXECUTE); // flag for writing to sram, active high
+wire sram_str  = rst_n && (state != READ_WAIT) && ((state == EXECUTE && OP_CODE == `OP_STORE) || state == PROGRAM); // flag for writing to sram, programs stored in sram.
 wire sram_read = rst_n && (state == READ_WAIT) && (OP_CODE == `OP_LOAD); // flag for reading from sram, active high
 wire [7:0] sram_dout; // data output from sram
 wire [7:0] sram_store = instruction[8:1];
@@ -80,10 +80,12 @@ reg [7:0] uio_oe_reg;
 assign uio_oe = uio_oe_reg; 
 
 
-
+wire [15:0] splitted_instruction = instruction_memory[write_pointer];
+wire [7:0]  top_byte      = word_to_split[15:8];
+wire [7:0]  bottom_byte   = word_to_split[7:0];
+        
 
 always @(posedge clk) begin
-  
   if (!rst_n) begin
     for (i = 0; i < 8; i = i + 1) begin
       reg_file[i] <= 8'd0;
@@ -112,7 +114,7 @@ always @(posedge clk) begin
           state <= EXECUTE;
         end
         else begin
-         write_pointer <= write_pointer + 1'b1;
+         write_pointer <= write_pointer + 1'b1; //determines which register to go to. only two registers.
         end
       end
      end
