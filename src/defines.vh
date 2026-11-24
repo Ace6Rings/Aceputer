@@ -19,7 +19,7 @@
 `define OP_LDI   4'h8
 `define OP_XOR   4'h9
 `define OP_MOV   4'hA
-
+`define OP_COMP  4'hB
 `define OP_AND   4'hC
 
 `define OP_JZ    4'hD

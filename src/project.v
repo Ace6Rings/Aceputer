@@ -114,6 +114,8 @@ always @(posedge clk) begin
      EXECUTE: begin
         if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
           pc <= pc + 1'b1;
+        if ((OP_CODE != `OP_OUT) && (OP_CODE != `OP_HALT))
+          uio_oe_reg = 8'h00;
 
         case (OP_CODE)
          `OP_ADD: if (rd != 3'b000)
@@ -128,6 +130,8 @@ always @(posedge clk) begin
                    reg_file[rd] <= reg_file[rs1] & reg_file[rs2];
          `OP_XOR: if(rd != 3'b000)
                    reg_file[rd] <= reg_file[rs1] ^ reg_file[rs2];   
+         `OP_COMP:if(rd != 3'b000)
+                   reg_file[rd] <= (reg_file[rs1] == reg_file[rs2]);
          `OP_LDI: if (rd != 3'b000)
                     reg_file[rd] <= instruction[8:1];
          `OP_STORE:;    //nothing happens                    
@@ -151,12 +155,9 @@ always @(posedge clk) begin
           output_reg <= {reg_file[rs1], reg_file[rs2]};
           state <= OUTPUT;
          end
-         default: begin
-            for (i = 0; i < 8; i=i+1) begin
-              reg_file[i] = 3'h0000;
-            end
-         end
+         default 
         endcase
+        
       end
      READ_WAIT: begin
       state <= READ_CAPTURE;
