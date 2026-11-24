@@ -179,5 +179,5 @@ always @(posedge clk) begin
         // output the output_reg indefinitely
       end
    endcase
-  
+end
 endmodule
