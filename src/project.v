@@ -155,7 +155,7 @@ always @(posedge clk) begin
           output_reg <= {reg_file[rs1], reg_file[rs2]};
           state <= OUTPUT;
          end
-         default 
+         default; //does jack shit
         endcase
         
       end
