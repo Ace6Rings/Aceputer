@@ -27,7 +27,8 @@ localparam [2:0] PROGRAM   = 3'b000,
                  EXECUTE   = 3'b001,
                  HALT      = 3'b010,
                  READ_WAIT = 3'b011,
-                 READ_CAPTURE = 3'b100; // wait for sram to send data back before reading sram_dout
+                 READ_CAPTURE = 3'b100, // wait for sram to send data back before reading sram_dout
+                 OUTPUT = 3'b101;
 integer i;
 reg [2:0] state;
 
@@ -143,8 +144,8 @@ always @(posedge clk) begin
          `OP_JZ: if (reg_file[rd] == 8'h00) pc <= instruction[8:4];
          `OP_JNZ: if (reg_file[rd] != 8'h00) pc <= instruction[8:4];
          `OP_OUT: begin
-          uio_oe_reg <= 8'hFF;
           output_reg <= {reg_file[rs1], reg_file[rs2]};
+          state <= OUTPUT;
          end
          default: begin
             for (i = 0; i < 8; i=i+1) begin
@@ -161,6 +162,12 @@ always @(posedge clk) begin
         reg_file[rd] <= sram_dout;  // register zero is read-only
       end
       pc <= pc + 1'b1;
+      state <= EXECUTE;
+     end
+
+     OUTPUT: begin
+      uio_oe_reg <= 8'hFF;
+      out <= output_reg;
       state <= EXECUTE;
      end
 
