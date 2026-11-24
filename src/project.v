@@ -47,9 +47,6 @@ wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instructio
 
 // Registers for operands and output
 reg [7:0] reg_file [7:0]; //operands
-initial begin
-  reg_file[0] = 8'h00; // register x0 read only to 0
-end
 reg  [15:0] output_reg;
 
 // operands
