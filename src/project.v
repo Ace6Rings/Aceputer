@@ -33,9 +33,9 @@ integer i;
 reg [2:0] state;
 
 // Instruction memory and program counter
-reg [4:0] pc = 5'd0; // program counter
+reg [4:0] pc; // program counter
 reg [15:0] instruction_memory [0:31]; // 32 instructions of 16 bits each
-reg [5:0] write_pointer = 5'd0;      // points to the next instruction to be written in instruction memory
+reg [4:0] write_pointer;    // points to the next instruction to be written in instruction memory
 
 
 // Instruction decoding
@@ -62,6 +62,8 @@ wire sram_read = rst_n && (state == READ_WAIT) && (OP_CODE == `OP_LOAD); // flag
 wire [7:0] sram_dout; // data output from sram
 wire [7:0] sram_store = instruction[8:1];
 gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
+  .VSS  (1'b0),
+  .VDD  (1'b1),
   .CLK  (clk),  // clock
   .A    (sram_store),  // address
   .D    (reg_file[rd]),  // put data from register a into sram
@@ -82,11 +84,11 @@ always @(posedge clk) begin
   
   if (!rst_n) begin
     for (i = 0; i < 8; i = i + 1) begin
-      reg_file[i] = 8'd0;
+      reg_file[i] <= 8'd0;
     end
     state <= PROGRAM;
     pc <= 5'd0;
-    write_pointer <= 6'd0;
+    write_pointer <= 5'd0;
     output_reg <= 16'h000;
     uio_oe_reg <= 8'h00; // default to input
     out <= 16'h000;
@@ -98,21 +100,24 @@ always @(posedge clk) begin
      PROGRAM: begin
       if (write_pointer == 31) begin
         instruction_memory[write_pointer] <= {`OP_HALT, 12'b000000000000}; // force last instruction to be a halt
+        write_pointer <= 5'd0;
         state <= EXECUTE;
       end
       else begin
         instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
-        write_pointer <= write_pointer + 1'b1; // increment write pointer
+         // increment write pointer
         if (program_word[15:12] == `OP_HALT) begin
+          write_pointer <= 5'd0;
           state <= EXECUTE;
         end
       end
+      write_pointer <= write_pointer + 1'b1;
       end
      EXECUTE: begin
         if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
           pc <= pc + 1'b1;
         if ((OP_CODE != `OP_OUT) && (OP_CODE != `OP_HALT))
-          uio_oe_reg = 8'h00;
+          uio_oe_reg <= 8'h00;
 
         case (OP_CODE)
          `OP_ADD: if (rd != 3'b000)
@@ -128,7 +133,7 @@ always @(posedge clk) begin
          `OP_XOR: if(rd != 3'b000)
                    reg_file[rd] <= reg_file[rs1] ^ reg_file[rs2];   
          `OP_COMP:if(rd != 3'b000)
-                   reg_file[rd] <= (reg_file[rs1] == reg_file[rs2]);
+                   reg_file[rd] <= {7'b0000000, (reg_file[rs1] == reg_file[rs2])};
          `OP_LDI: if (rd != 3'b000)
                     reg_file[rd] <= instruction[8:1];
          `OP_STORE:;    //nothing happens                    
@@ -177,6 +182,9 @@ always @(posedge clk) begin
       out <= output_reg;
       uio_oe_reg <= 8'hFF; //switch them to output
         // output the output_reg indefinitely
+      end
+      default: begin
+        state <= HALT;
       end
    endcase
 end
