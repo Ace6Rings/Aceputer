@@ -21,32 +21,28 @@ module tt_um_example (
   
 
 `include "defines.vh"
-// right to left, 4 bits for opcode, 3 bits for destination register for load and load high, 8 for actual value
+// Instructions are 16 bits wide; applicable data operands are 8 bits wide.
 // arithmetic right to left 4 bits for opcode, 3 bits for destination register, 3 bits for source register, 6 reserved
 
 reg [2:0] state, next_state;
-localparam PROGRAM   = 3'B000,
-           EXECUTE   = 3'B001,
-           HALT      = 3'B010;
-           READ_WAIT = 3'B011;
-           HANDSHAKE_WAIT = 3'B111;
 
-localparam a = 2'b000,
-           b = 2'b001,
-           c = 2'b010,
-           d = 2'b011;
-           e = 2'b100;
-           f = 2'b101;
-           g = 2'b110;
-           h = 2'b111;
+localparam PROGRAM        = 3'b000,
+           EXECUTE        = 3'b001,
+           HALT           = 3'b010,
+           READ_WAIT      = 3'b011,
+           HANDSHAKE_WAIT = 3'b111;
+
+
+
 
 
 //HANDSHAKE
 wire [15:0] handshake_out;
-wire [15:0] hs_in1_code = 16'd6767 //random ass value
-wire [15:0] hs_in2_code = 16'd6969
-wire [15:0] hs_out_code = 16'd7676 //random ass value again
+wire [15:0] hs_in1_code = 16'd6767; // Random handshake value.
+wire [15:0] hs_in2_code = 16'd6969;
+wire [15:0] hs_out_code = 16'd7676; // Random handshake value.
 reg read_handshake;
+integer i;
 
 // Instruction memory and program counter
 reg [4:0] pc = 5'd0; // program counter
@@ -56,15 +52,17 @@ reg [5:0] write_pointer = 5'd0;      // points to the next instruction to be wri
 
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
-wire [15:0] out = {uio_in[7:0], uo_out [7:0]} //16 bit out
+reg [15:0] out;
 wire [15:0] instruction = instruction_memory[pc]; // instruction input
 wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instruction
 
 // Registers for operands and output
-reg [15:0] reg_file [7:0]; //operands
-reg_file[0] = 16'h0000; // register x0 read only to 0
+reg [7:0] reg_file [7:0]; //operands
+initial begin
+  reg_file[0] = 8'h00; // register x0 read only to 0
+end
 
-reg  [31:0] output_reg; //since output is actually 16 bits, it will require two clock cycles to output the value if the number is greater than 2^16
+reg  [15:0] output_reg;
 
 wire [2:0] rs1, rs2, rd;
 
@@ -80,17 +78,14 @@ wire sram_str  = rst_n && (state != READ_WAIT) && (OP_CODE == `OP_STORE); // fla
 wire sram_read = rst_n && (state == READ_WAIT) && (OP_CODE == `OP_LOAD); // flag for reading from sram, active high
 wire [7:0] sram_dout; // data output from sram, prolly will go to reg b
 wire [7:0] sram_store; // address to store data in sram, lower 8 bits of instruction
-reg read_16bit_flag = 0; //check if read from sram gets a 8 or 16 bit value. default to 0. 0 = 8 bits, 1 = 16 bits;
-reg write_16bit_flag = 0;
-
 gf180mcu_ocd_ip_sram___sram256x8mwm1 m_sram (
-  .CLK  (clk)  // clock
-  .A    (sram_store)  // address
-  .D    (reg_file[rd])  // put data from register a into sram
-  .Q    (sram_dout)
-  .CEN  (!(sram_str || sram_read))  // sram en, active low
-  .GWEN (!(sram_str))  // sram write en, active low
-  .WEN  (8'b00000000) // might change this, allows rewriting of all bits
+  .CLK  (clk),  // clock
+  .A    (sram_store),  // address
+  .D    (reg_file[rd]),  // put data from register a into sram
+  .Q    (sram_dout),
+  .CEN  (!(sram_str || sram_read)),  // sram en, active low
+  .GWEN (!(sram_str)),  // sram write en, active low
+  .WEN  (8'b00000000)  // might change this, allows rewriting of all bits
 );
 
 
@@ -100,10 +95,10 @@ gf180mcu_ocd_ip_sram___sram256x8mwm1 m_sram (
 always @(posedge clk) begin
   
   if (!rst_n) begin
-    for (i = 0; i < 16; i = i + 1) begin
-      reg_file[i] = 16'd0;
+    for (i = 0; i < 8; i = i + 1) begin
+      reg_file[i] = 8'd0;
     end
-    output_reg <= 16'h0000;
+    output_reg <= 8'h00;
     state <= HANDSHAKE_WAIT;
     pc <= 5'd0;
     write_pointer <= 6'd0;
@@ -112,52 +107,36 @@ always @(posedge clk) begin
   else
     case (state)
      HANDSHAKE_WAIT: begin
-      if (program_word == hs_in1_code)begin
+      if (program_word == hs_in1_code) begin
         out = hs_out_code;
-      end
-      else if (program_word == hs_in2_code)begin
+      end else if (program_word == hs_in2_code) begin
         next_state <= PROGRAM;
         read_handshake = 1'b1;
       end
      end
-
      PROGRAM: begin
         if (read_handshake == 1'b1) begin
          instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
          write_pointer <= write_pointer + 1'b1; // increment write pointer
-         if (program_word [15:12] == OP_HALT) begin
-          
+         if (program_word [15:12] == `OP_HALT) begin
+          next_state <= EXECUTE;
          end
-
         end
-        
-      end
       end
      EXECUTE: begin
-        case (OP_CODE) 
         if (rd != 3'b000) begin // 4 bits for opcode, 3 bits for reg 1, 3 bits for reg 2, 3 bits destination reg, 3 bits reserved
+         case (OP_CODE)
          `OP_ADD:     reg_file[rd] <= reg_file[rs1] + reg_file[rs2];
          `OP_SUB:     reg_file[rd] <= reg_file[rs1] - reg_file[rs2];
-         `OP_MUL:     reg_file[rd] <= reg_file[rs1] * reg_file[rs2];       
+         `MUL:        reg_file[rd] <= reg_file[rs1] * reg_file[rs2];
          `OP_ADDI:  begin
           if (instruction[0] == 0)
             reg_file[rd] <= reg_file[rd] + instruction[8:1]; // TO SUBTRACT, JUST ADDI A VALUE SUCH THAT IT OVERFLOWS AND EFFECTIVELY SUBTRACTS
-         end   
-        end
-         `OP_LDI:   begin
-          if (instruction[0] == 1'b0) begin
-            reg_file[rd][7:0]  <= instruction[8:1];
-          end
-          if (instruction[0] == 1'b1) begin
-            reg_file[rd][15:8] <= instruction[8:1];
-          end
-         end          
+         end
+         `OP_LDI: reg_file[rd] <= instruction[8:1];
          `OP_STORE:;                                   //nothing happens
          `OP_LOAD:  begin 
             next_state <= READ_WAIT;  // go to READ_WAIT state to read from sram
-            if (instruction[0] == 1)begin
-              16bit_read = 1'b1;
-            end      
          end      
          `OP_MOV: begin
           reg_file[instruction[11:9]] <= reg_file[instruction[8:6]];
@@ -175,8 +154,7 @@ always @(posedge clk) begin
             c <= 16'h0000;
             d <= 16'h0000;
          end
-      endcase
-        
+         endcase
         end else begin
           state <= PROGRAM; // go back to PROGRAM state after execution
         end
