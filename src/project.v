@@ -24,24 +24,13 @@ module tt_um_example (
 // Instructions are 16 bits wide; applicable data operands are 8 bits wide.
 // arithmetic right to left 4 bits for opcode, 3 bits for destination register, 3 bits for source register, 6 reserved
 
-reg [2:0] state, next_state;
+reg [2:0] state;
 
-localparam PROGRAM        = 3'b000,
-           EXECUTE        = 3'b001,
-           HALT           = 3'b010,
-           READ_WAIT      = 3'b011,
-           HANDSHAKE_WAIT = 3'b111;
-
-
-
-
-
-//HANDSHAKE
-wire [15:0] handshake_out;
-wire [15:0] hs_in1_code = 16'd6767; // Random handshake value.
-wire [15:0] hs_in2_code = 16'd6969;
-wire [15:0] hs_out_code = 16'd7676; // Random handshake value.
-reg read_handshake;
+localparam [2:0] PROGRAM   = 3'b000,
+                 EXECUTE   = 3'b001,
+                 HALT      = 3'b010,
+                 READ_WAIT = 3'b011,
+                 READ_CAPTURE = 3'b100; // wait for sram to send data back before reading sram_dout
 integer i;
 
 // Instruction memory and program counter
@@ -53,6 +42,7 @@ reg [5:0] write_pointer = 5'd0;      // points to the next instruction to be wri
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
 reg [15:0] out;
+assign {uio_out[7:0], uo_out[7:0]} = out;
 wire [15:0] instruction = instruction_memory[pc]; // instruction input
 wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instruction
 
@@ -74,11 +64,11 @@ assign rs2  = instruction[5:3];
 
 
 // SRAM 
-wire sram_str  = rst_n && (state != READ_WAIT) && (OP_CODE == `OP_STORE); // flag for writing to sram, active high
+wire sram_str  = rst_n && (state != READ_WAIT) && (OP_CODE == `OP_STORE) && (state == EXECUTE); // flag for writing to sram, active high
 wire sram_read = rst_n && (state == READ_WAIT) && (OP_CODE == `OP_LOAD); // flag for reading from sram, active high
-wire [7:0] sram_dout; // data output from sram, prolly will go to reg b
-wire [7:0] sram_store; // address to store data in sram, lower 8 bits of instruction
-gf180mcu_ocd_ip_sram___sram256x8mwm1 m_sram (
+wire [7:0] sram_dout; // data output from sram
+wire [7:0] sram_store = instruction[8:1];
+gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
   .CLK  (clk),  // clock
   .A    (sram_store),  // address
   .D    (reg_file[rd]),  // put data from register a into sram
@@ -99,73 +89,74 @@ always @(posedge clk) begin
       reg_file[i] = 8'd0;
     end
     output_reg <= 8'h00;
-    state <= HANDSHAKE_WAIT;
+    state <= PROGRAM;
     pc <= 5'd0;
     write_pointer <= 6'd0;
   end
   
   else
     case (state)
-     HANDSHAKE_WAIT: begin
-      if (program_word == hs_in1_code) begin
-        out = hs_out_code;
-      end else if (program_word == hs_in2_code) begin
-        next_state <= PROGRAM;
-        read_handshake = 1'b1;
-      end
-     end
+     
      PROGRAM: begin
-        if (read_handshake == 1'b1) begin
-         instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
-         write_pointer <= write_pointer + 1'b1; // increment write pointer
-         if (program_word [15:12] == `OP_HALT) begin
-          next_state <= EXECUTE;
-         end
+        instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
+        write_pointer <= write_pointer + 1'b1; // increment write pointer
+        if (program_word[15:12] == `OP_HALT) begin
+          state <= EXECUTE;
         end
       end
      EXECUTE: begin
-        if (rd != 3'b000) begin // 4 bits for opcode, 3 bits for reg 1, 3 bits for reg 2, 3 bits destination reg, 3 bits reserved
-         case (OP_CODE)
-         `OP_ADD:     reg_file[rd] <= reg_file[rs1] + reg_file[rs2];
-         `OP_SUB:     reg_file[rd] <= reg_file[rs1] - reg_file[rs2];
-         `MUL:        reg_file[rd] <= reg_file[rs1] * reg_file[rs2];
+        if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
+          pc <= pc + 1'b1;
+
+        case (OP_CODE)
+         `OP_ADD: if (rd != 3'b000)
+                    reg_file[rd] <= reg_file[rs1] + reg_file[rs2];
+         `OP_SUB: if (rd != 3'b000)
+                    reg_file[rd] <= reg_file[rs1] - reg_file[rs2];
          `OP_ADDI:  begin
-          if (instruction[0] == 0)
+          if ((rd != 3'b000) && (instruction[0] == 0))
             reg_file[rd] <= reg_file[rd] + instruction[8:1]; // TO SUBTRACT, JUST ADDI A VALUE SUCH THAT IT OVERFLOWS AND EFFECTIVELY SUBTRACTS
          end
-         `OP_LDI: reg_file[rd] <= instruction[8:1];
-         `OP_STORE:;                                   //nothing happens
-         `OP_LOAD:  begin 
-            next_state <= READ_WAIT;  // go to READ_WAIT state to read from sram
-         end      
+         `OP_LDI: if (rd != 3'b000)
+                    reg_file[rd] <= instruction[8:1];
+         `OP_STORE:;    //nothing happens                    
+         `OP_LOAD: state <= READ_WAIT;  // go to READ_WAIT state to read from sram
+         
+         
+               
          `OP_MOV: begin
-          reg_file[instruction[11:9]] <= reg_file[instruction[8:6]];
+          if (rd != 3'b000)
+            reg_file[rd] <= reg_file[rs1];
          end
-         `OP_SHL: reg_file[rd] <= reg_file[rd] << 1; // shift left
-         `OP_SHR: reg_file[rd] <= reg_file[rd] >> 1; // shift right
+         `OP_SHL: if (rd != 3'b000)
+                    reg_file[rd] <= reg_file[rd] << 1; // shift left
+         `OP_SHR: if (rd != 3'b000)
+                    reg_file[rd] <= reg_file[rd] >> 1; // shift right
          `OP_HALT: state <= HALT; // halt the processor
 
-         `OP_JZ: if (rd == 16'h0000) pc <= instruction[8:4]; // jump to address in instruction if a is zero, 6:2 because there are only 32 instructions, so use [8:4]
-         `OP_JNZ: if (rd != 16'h0000) pc <= instruction[6:2]; // jump to address in instruction if a is not zero
+         `OP_JZ: if (reg_file[rd] == 8'h00) pc <= instruction[8:4];
+         `OP_JNZ: if (reg_file[rd] != 8'h00) pc <= instruction[8:4];
 
          default: begin
-            a <= 16'h0000;
-            b <= 16'h0000;
-            c <= 16'h0000;
-            d <= 16'h0000;
+            for (i = 0; i < 8; i=i+1) begin
+              reg_file[i] = 0'h0000;
+            end
          end
-         endcase
-        end else begin
-          state <= PROGRAM; // go back to PROGRAM state after execution
-        end
+        endcase
       end
      READ_WAIT: begin
-       reg_file[rd] <= sram_dout;  // read data from sram into register b
-       next_state <= EXECUTE; // reset reading flag after reading from sram
+      state <= READ_CAPTURE;
      end
+     READ_CAPTURE: begin
+      if (rd != 3'b000) begin
+        reg_file[rd] <= sram_dout;  // register zero is read-only
+      end
+      pc <= pc + 1'b1;
+      state <= EXECUTE;
+     end
+
      HALT: begin
         // do nothing, halt the processor
       end
    endcase
-   state <= next_state;
 endmodule

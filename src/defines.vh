@@ -20,7 +20,6 @@
 //no 4'h9
 `define OP_MOV   4'hA
 
-`define MUL      4'hB
 //no 4'c
 
 `define OP_JZ    4'hD
