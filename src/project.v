@@ -18,13 +18,10 @@ module tt_um_example (
 
   // All output pins must be assigned. If not used, assign to 0.
 
-  
+
 
 `include "defines.vh"
-// Instructions are 16 bits wide; applicable data operands are 8 bits wide.
-// arithmetic right to left 4 bits for opcode, 3 bits for destination register, 3 bits for source register, 6 reserved
 
-reg [2:0] state;
 
 localparam [2:0] PROGRAM   = 3'b000,
                  EXECUTE   = 3'b001,
@@ -32,6 +29,7 @@ localparam [2:0] PROGRAM   = 3'b000,
                  READ_WAIT = 3'b011,
                  READ_CAPTURE = 3'b100; // wait for sram to send data back before reading sram_dout
 integer i;
+reg [2:0] state;
 
 // Instruction memory and program counter
 reg [4:0] pc = 5'd0; // program counter
@@ -51,16 +49,13 @@ reg [7:0] reg_file [7:0]; //operands
 initial begin
   reg_file[0] = 8'h00; // register x0 read only to 0
 end
-
 reg  [15:0] output_reg;
 
+// operands
 wire [2:0] rs1, rs2, rd;
-
-assign rd   = instruction[11:9]; //
+assign rd   = instruction[11:9]; 
 assign rs1  = instruction[8:6];
 assign rs2  = instruction[5:3];
-
-
 
 
 // SRAM 
@@ -78,6 +73,9 @@ gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
   .WEN  (8'b00000000)  // might change this, allows rewriting of all bits
 );
 
+//uio_oe 
+reg [7:0] uio_oe_reg;
+assign uio_oe = uio_oe_reg; 
 
 
 
@@ -88,10 +86,12 @@ always @(posedge clk) begin
     for (i = 0; i < 8; i = i + 1) begin
       reg_file[i] = 8'd0;
     end
-    output_reg <= 8'h00;
     state <= PROGRAM;
     pc <= 5'd0;
     write_pointer <= 6'd0;
+    output_reg <= 16'h000;
+    uio_oe_reg <= 8'h00; // default to input
+    out <= 16'h000;
   end
   
   else
@@ -142,7 +142,10 @@ always @(posedge clk) begin
 
          `OP_JZ: if (reg_file[rd] == 8'h00) pc <= instruction[8:4];
          `OP_JNZ: if (reg_file[rd] != 8'h00) pc <= instruction[8:4];
-
+         `OP_OUT: begin
+          uio_oe_reg <= 8'hFF;
+          output_reg <= {reg_file[rs1], reg_file[rs2]};
+         end
          default: begin
             for (i = 0; i < 8; i=i+1) begin
               reg_file[i] = 3'h0000;
@@ -162,7 +165,10 @@ always @(posedge clk) begin
      end
 
      HALT: begin
-        // do nothing, halt the processor
+      out <= output_reg;
+      uio_oe_reg <= 8'hFF; //switch them to output
+        // output the output_reg indefinitely
       end
    endcase
+  
 endmodule

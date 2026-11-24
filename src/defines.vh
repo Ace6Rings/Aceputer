@@ -4,7 +4,7 @@
 // OPCODES
 
 
-// no 4'h0 because i can just add reg_file [0]
+`define OP_OUT   4'h0
 
 `define OP_ADD   4'h1
 `define OP_SUB   4'h2
