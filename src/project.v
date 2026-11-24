@@ -98,11 +98,17 @@ always @(posedge clk) begin
     case (state)
      
      PROGRAM: begin
+      if (write_pointer == 31) begin
+        instruction_memory[write_pointer] <= {`OP_HALT, 12'b000000000000}; // force last instruction to be a halt
+        state <= EXECUTE;
+      end
+      else begin
         instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
         write_pointer <= write_pointer + 1'b1; // increment write pointer
         if (program_word[15:12] == `OP_HALT) begin
           state <= EXECUTE;
         end
+      end
       end
      EXECUTE: begin
         if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
@@ -114,7 +120,7 @@ always @(posedge clk) begin
          `OP_SUB: if (rd != 3'b000)
                     reg_file[rd] <= reg_file[rs1] - reg_file[rs2];
          `OP_ADDI:  begin
-          if ((rd != 3'b000) && (instruction[0] == 0))
+          if (rd != 3'b000)
             reg_file[rd] <= reg_file[rd] + instruction[8:1]; // TO SUBTRACT, JUST ADDI A VALUE SUCH THAT IT OVERFLOWS AND EFFECTIVELY SUBTRACTS
          end
          `OP_LDI: if (rd != 3'b000)
@@ -139,7 +145,7 @@ always @(posedge clk) begin
 
          default: begin
             for (i = 0; i < 8; i=i+1) begin
-              reg_file[i] = 0'h0000;
+              reg_file[i] = 3'h0000;
             end
          end
         endcase
