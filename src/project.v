@@ -62,8 +62,6 @@ wire sram_read = rst_n && (state == READ_WAIT) && (OP_CODE == `OP_LOAD); // flag
 wire [7:0] sram_dout; // data output from sram
 wire [7:0] sram_store = instruction[8:1];
 gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
-  .VSS  (1'b0),
-  .VDD  (1'b1),
   .CLK  (clk),  // clock
   .A    (sram_store),  // address
   .D    (reg_file[rd]),  // put data from register a into sram
