@@ -4,7 +4,7 @@
 // OPCODES
 
 
-`define OP_NOP   4'h0
+// no 4'h0 because i can just add reg_file [0]
 
 `define OP_ADD   4'h1
 `define OP_SUB   4'h2
@@ -17,11 +17,11 @@
 `define OP_SHR   4'h7
 
 `define OP_LDI   4'h8
-`define OP_LDB   4'h9
+//no 4'h9
 `define OP_MOV   4'hA
 
 `define MUL      4'hB
-`define OP_LDIH  4'hC
+//no 4'c
 
 `define OP_JZ    4'hD
 `define OP_JNZ   4'hE
