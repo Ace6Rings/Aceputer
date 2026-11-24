@@ -105,14 +105,15 @@ always @(posedge clk) begin
       end
       else begin
         instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
-         // increment write pointer
         if (program_word[15:12] == `OP_HALT) begin
           write_pointer <= 5'd0;
           state <= EXECUTE;
         end
+        else begin
+         write_pointer <= write_pointer + 1'b1;
+        end
       end
-      write_pointer <= write_pointer + 1'b1;
-      end
+     end
      EXECUTE: begin
         if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
           pc <= pc + 1'b1;
