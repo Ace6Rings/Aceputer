@@ -24,11 +24,12 @@ module tt_um_example (
 // right to left, 4 bits for opcode, 3 bits for destination register for load and load high, 8 for actual value
 // arithmetic right to left 4 bits for opcode, 3 bits for destination register, 3 bits for source register, 6 reserved
 
-reg [1:0] state, next_state;
-localparam PROGRAM = 2'B00,
-           EXECUTE = 2'B01,
-           HALT    = 2'B10;
-           READ_WAIT = 2'B11;
+reg [2:0] state, next_state;
+localparam PROGRAM   = 3'B000,
+           EXECUTE   = 3'B001,
+           HALT      = 3'B010;
+           READ_WAIT = 3'B011;
+           HANDSHAKE_WAIT = 3'B111;
 
 localparam a = 2'b000,
            b = 2'b001,
@@ -40,6 +41,13 @@ localparam a = 2'b000,
            h = 2'b111;
 
 
+//HANDSHAKE
+wire [15:0] handshake_out;
+wire [15:0] hs_in1_code = 16'd6767 //random ass value
+wire [15:0] hs_in2_code = 16'd6969
+wire [15:0] hs_out_code = 16'd7676 //random ass value again
+reg read_handshake;
+
 // Instruction memory and program counter
 reg [4:0] pc = 5'd0; // program counter
 reg [15:0] instruction_memory [0:31]; // 32 instructions of 16 bits each
@@ -48,6 +56,7 @@ reg [5:0] write_pointer = 5'd0;      // points to the next instruction to be wri
 
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
+wire [15:0] out = {uio_in[7:0], uo_out [7:0]} //16 bit out
 wire [15:0] instruction = instruction_memory[pc]; // instruction input
 wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instruction
 
@@ -58,13 +67,12 @@ reg_file[0] = 16'h0000; // register x0 read only to 0
 reg  [31:0] output_reg; //since output is actually 16 bits, it will require two clock cycles to output the value if the number is greater than 2^16
 
 wire [2:0] rs1, rs2, rd;
+
 assign rd   = instruction[11:9]; //
 assign rs1  = instruction[8:6];
 assign rs2  = instruction[5:3];
-reg [15:0] mov_value;
 
 
-reg write_en = instruction[3]; // flag to enable writing to instruction memory
 
 
 // SRAM 
@@ -96,21 +104,33 @@ always @(posedge clk) begin
       reg_file[i] = 16'd0;
     end
     output_reg <= 16'h0000;
-    state <= PROGRAM;
+    state <= HANDSHAKE_WAIT;
     pc <= 5'd0;
     write_pointer <= 6'd0;
   end
   
   else
     case (state)
-      PROGRAM: begin
-        if (write_en) begin
+     HANDSHAKE_WAIT: begin
+      if (program_word == hs_in1_code)begin
+        out = hs_out_code;
+      end
+      else if (program_word == hs_in2_code)begin
+        next_state <= PROGRAM;
+        read_handshake = 1'b1;
+      end
+     end
+
+     PROGRAM: begin
+        if (read_handshake == 1'b1) begin
          instruction_memory[write_pointer] <= program_word; // write instruction to instruction memory
          write_pointer <= write_pointer + 1'b1; // increment write pointer
+         if (program_word [15:12] == OP_HALT) begin
+          
+         end
+
         end
-        else begin
-         state <= EXECUTE; // go to EXECUTE state after writing all instructions
-        end
+        
       end
       end
      EXECUTE: begin
@@ -169,4 +189,5 @@ always @(posedge clk) begin
         // do nothing, halt the processor
       end
    endcase
+   state <= next_state;
 endmodule
