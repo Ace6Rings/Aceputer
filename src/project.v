@@ -17,12 +17,12 @@ module tt_um_Ace6Rings (
 );
 
   // All output pins must be assigned. If not used, assign to 0.
-"/* verilator lint_off UNUSEDSIGNAL */"
+/* verilator lint_off UNUSEDSIGNAL */
     wire instruction[0];
-"/* verilator lint_off UNUSEDSIGNAL */"
-"/* verilator lint_off UNUSEDSIGNAL */"
+/* verilator lint_off UNUSEDSIGNAL */
+/* verilator lint_off UNUSEDSIGNAL */
     wire ena;
-"/* verilator lint_off UNUSEDSIGNAL */"
+/* verilator lint_off UNUSEDSIGNAL */
 
 `include "defines.vh"
 
