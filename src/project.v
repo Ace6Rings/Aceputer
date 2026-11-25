@@ -16,12 +16,6 @@ module tt_um_Ace6Rings (
     input  wire       rst_n     // reset_n - low to reset
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-/* verilator lint_off UNUSEDSIGNAL */
-    wire instruction[0];
-/* verilator lint_off UNUSEDSIGNAL */
-
-
 `include "defines.vh"
 
 
@@ -31,7 +25,7 @@ localparam [2:0] PROGRAM   = 3'b000,
                  READ_WAIT = 3'b011,
                  READ_CAPTURE = 3'b100, // wait for sram to send data back before reading sram_dout
                  OUTPUT = 3'b101,
-                 PROGRAM_WRITE= 3'110;
+                 PROGRAM_WRITE = 3'b110,
                  PROGRAM_READ = 3'b111;
 integer i;
 reg [2:0] state;
@@ -60,17 +54,32 @@ assign rs2  = instruction[5:3];
 // SRAM 
 wire [7:0] sram_dout; // data output from sram
 wire sram_str  = rst_n && (state != READ_WAIT) && ((state == EXECUTE && OP_CODE == `OP_STORE) || state == PROGRAM_WRITE); // flag for writing to sram, programs stored in sram.
-wire sram_read = rst_n && ((prefetch_flag == 1'b1) || (state == PROGRAM_READ) || ((state == READ_WAIT) && (OP_CODE == `OP_LOAD))); // flag for reading from sram, active high
+wire sram_read = rst_n && ((prefetch_issue) || (state == PROGRAM_READ) || ((state == READ_WAIT) && (OP_CODE == `OP_LOAD))); // flag for reading from sram, active high
 wire [7:0] sram_addr, sram_din;
 assign sram_din = (state == PROGRAM_WRITE) ? (byte_sel ? instruction_reg[0][15:8] : instruction_reg[0][7:0]) : reg_file[rd];
+wire [6:0] prefetch_word_addr = prefetch_start ? (pc + 7'd1) : prefetch_reg;
 assign sram_addr = (state == PROGRAM_WRITE) ? {write_pointer, byte_sel} :
-                   ((state == PROGRAM_READ) ? {pc, byte_sel} :
-                   ((prefetch_flag || prefetch_pending) ? {prefetch_reg, byte_sel} : instruction[8:1]));
+                   (state == PROGRAM_READ) ? {pc, byte_sel} :
+                   prefetch_issue ? {prefetch_word_addr, byte_sel} :
+                   instruction[8:1]; //holy shit this is unreadable
 reg [7:0] sram_store;
 reg [6:0] prefetch_reg;
 reg prefetch_flag;
 reg prefetch_pending;
-
+reg prefetch_byte_sel_d;
+reg prefetch_buffer_valid;
+wire prefetch_start =
+    rst_n &&
+    (state == EXECUTE) &&
+    !prefetch_flag &&
+    !prefetch_pending &&
+    !prefetch_buffer_valid &&
+    (OP_CODE != `OP_LOAD) &&
+    (OP_CODE != `OP_STORE) &&
+    (OP_CODE != `OP_HALT) &&
+    (OP_CODE != `OP_JZ) &&
+    (OP_CODE != `OP_JNZ);
+wire prefetch_issue = prefetch_start || prefetch_flag;
 
 gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
   .CLK  (clk),  // clock
@@ -88,14 +97,13 @@ assign uio_oe = uio_oe_reg;
 
 //WRITE PROGRAM TO MEMORY
 
-wire [15:0] splitted_instruction = instruction_reg[0] //only zero, the other reg is useful for reading programs
-wire [7:0]  top_byte    = word_to_split[15:8];
-wire [7:0]  bottom_byte = word_to_split[7:0];
 reg byte_sel; // 0 = low byte, 1 = high byte
 reg [15:0] instruction_reg[1:0]; //instruction reg
 reg OP_HALT_FLAG; //0 if opcode is NOT OP_HALT, 1 if it is.
 
-
+always @ (*) begin
+  
+end
 always @(posedge clk) begin
   if (!rst_n) begin
     for (i = 0; i < 8; i = i + 1) begin
@@ -105,10 +113,13 @@ always @(posedge clk) begin
     pc <= 8'd0;
     write_pointer <= 7'd0;
     byte_sel <= 1'b0;
-    instruction_buffer_valid_flag <= 1'b0;
     prefetch_reg <= 7'd0;
     prefetch_flag <= 1'b0;
     prefetch_pending <= 1'b0;
+    prefetch_byte_sel_d <= 1'b0;
+    prefetch_buffer_valid <= 1'b0;
+    instruction_buffer_valid_flag <= 1'b0;
+    OP_HALT_FLAG <= 1'b0;
     output_reg <= 16'h000;
     uio_oe_reg <= 8'h00; // default to input
     out <= 16'h000;
@@ -117,7 +128,7 @@ always @(posedge clk) begin
   else begin
     case (state)
      PROGRAM: begin  // THE HOST MUST HOLD THE INSTRUCTION FOR 2 CLOCK CYCLES
-      if (write_pointer == xx) begin //change xx 
+      if (write_pointer == 7'd127) begin
         instruction_reg[0] <= {`OP_HALT, 12'b000000000000}; // force last instruction to be a halt
         state <= PROGRAM_WRITE;
         OP_HALT_FLAG <= 1'b1;
@@ -187,12 +198,12 @@ always @(posedge clk) begin
       state <= READ_CAPTURE;
      end
      READ_CAPTURE: begin
-      if (rd != 3'b000) begin
+        if (rd != 3'b000) begin
         reg_file[rd] <= sram_dout;  // register zero is read-only
-      end
-      pc <= pc + 1'b1;
-      state <= EXECUTE;
-     end
+        end
+        pc <= pc + 1'b1;
+        state <= EXECUTE;
+        end
 
      OUTPUT: begin
       uio_oe_reg <= 8'hFF;
@@ -208,27 +219,28 @@ always @(posedge clk) begin
      PROGRAM_WRITE: begin
        case (byte_sel) //one bit reg that specifies if the write is low byte or high
         1'b0: begin
-          byte_sel <= !byte_sel;
+          byte_sel <= 1'b1;
         end
         1'b1: begin
-          byte_sel <= !byte_sel;
+          byte_sel <= 1'b0;
           state <= PROGRAM;
           write_pointer <= write_pointer + 7'd1;
         end
        endcase
        if (OP_HALT_FLAG == 1'b1 && (byte_sel == 1'b1)) begin //fix byte_sel logic later
-        state <= PROGRAM_READ
+        state <= PROGRAM_READ;
+        byte_sel <= 1'b0;
        end
      end
      PROGRAM_READ: begin //basically just used to start the program
       case (byte_sel)
         1'b0: begin
-          instruction_reg[0][7:0] <= sdram_out;
-          byte_sel <= byte_sel!;
+          instruction_reg[0][7:0] <= sram_dout;
+          byte_sel <= 1'b1;
         end
         1'b1: begin
-          instruction_reg[0][15:8] <= sdram_out;
-          byte_sel <= byte_sel!;
+          instruction_reg[0][15:8] <= sram_dout;
+          byte_sel <= 1'b0;
           pc <= pc + 1'd1;
           instruction_buffer_valid_flag = 1'b1;
         end
@@ -238,22 +250,31 @@ always @(posedge clk) begin
         state <= HALT;
       end
    endcase
-   if (prefetch_flag) begin
+if (prefetch_pending) begin //edge 2
+  if (!prefetch_byte_sel_d) begin
+    instruction_reg[1][7:0] <= sram_dout;
+  end
+  else begin
+    instruction_reg[1][15:8] <= sram_dout; //edge 3
+    prefetch_buffer_valid <= 1'b1;
+  end
+end
+
+prefetch_pending <= prefetch_issue; //edge 1
+
+if (prefetch_issue) begin
+  prefetch_byte_sel_d <= byte_sel;
+  if (!byte_sel) begin
+    byte_sel <= 1'b1;
+    prefetch_flag <= 1'b1;
+    if (prefetch_start)
+      prefetch_reg <= pc + 7'd1;
+  end
+  else begin
+    byte_sel <= 1'b0;
     prefetch_flag <= 1'b0;
-    prefetch_pending <= 1'b1;
-    case (byte_sel)
-      1'b0: begin
-        instruction_reg[1][7:0] = sram_dout;
-        byte_sel != byte_sel;
-      end
-      1'b1: begin
-        instruction_reg[1][15:8] = sram_dout;
-        byte_sel != byte_sel;
-      end
-    endcase
-
-   end
-
-
+  end
+end
+  end
 end
 endmodule
