@@ -34,13 +34,14 @@ reg [2:0] state;
 reg [6:0] pc; // program counter
 reg [6:0] write_pointer;    // points to the next instruction to be written in instruction memory
 reg instruction_complete;
+reg program_read_active;
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
 reg [15:0] out;
 assign {uio_out[7:0], uo_out[7:0]} = out;
 wire [15:0] instruction = instruction_reg[0]; // instruction input
 wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instruction
-reg instruction_buffer_valid_flag; //shorten this name later ig
+
 // Registers for operands and output
 reg [7:0] reg_file [7:0]; //operands
 reg  [15:0] output_reg;
@@ -115,13 +116,13 @@ always @(posedge clk) begin
     pc <= 8'd0;
     write_pointer <= 7'd0;
     instruction_complete <= 1'b0; 
+    program_read_active <= 1'b0;
     byte_sel <= 1'b0;
     prefetch_reg <= 7'd0;
     prefetch_flag <= 1'b0;
     prefetch_pending <= 1'b0;
     prefetch_byte_sel_d <= 1'b0;
     prefetch_buffer_valid <= 1'b0;
-    instruction_buffer_valid_flag <= 1'b0;
     OP_HALT_FLAG <= 1'b0;
     output_reg <= 16'h000;
     uio_oe_reg <= 8'h00; // default to input
@@ -223,12 +224,27 @@ always @(posedge clk) begin
       state <= READ_CAPTURE;
      end
      READ_CAPTURE: begin
-        if (rd != 3'b000) begin
-        reg_file[rd] <= sram_dout;  // register zero is read-only
+        if (program_read_active) begin
+          if (!byte_sel) begin
+            instruction_reg[0][7:0] <= sram_dout;
+            byte_sel <= 1'b1;
+            state <= PROGRAM_READ;
+          end
+          else begin
+            instruction_reg[0][15:8] <= sram_dout;
+            byte_sel <= 1'b0;
+            program_read_active <= 1'b0;
+            state <= EXECUTE;
+          end
         end
-        pc <= pc + 1'b1;
-        state <= EXECUTE;
+        else begin
+          if (rd != 3'b000) begin
+            reg_file[rd] <= sram_dout;  // register zero is read-only
+          end
+          pc <= pc + 1'b1;
+          state <= EXECUTE;
         end
+     end
 
      OUTPUT: begin
       uio_oe_reg <= 8'hFF;
@@ -255,21 +271,12 @@ always @(posedge clk) begin
        if (OP_HALT_FLAG == 1'b1 && (byte_sel == 1'b1)) begin //fix byte_sel logic later
         state <= PROGRAM_READ;
         byte_sel <= 1'b0;
+        pc <= 7'd0;
+        program_read_active <= 1'b1;
        end
      end
      PROGRAM_READ: begin //basically just used to start the program
-      case (byte_sel)
-        1'b0: begin
-          instruction_reg[0][7:0] <= sram_dout;
-          byte_sel <= 1'b1;
-        end
-        1'b1: begin
-          instruction_reg[0][15:8] <= sram_dout;
-          byte_sel <= 1'b0;
-          pc <= pc + 1'd1;
-          instruction_buffer_valid_flag = 1'b1;
-        end
-      endcase
+      state <= READ_CAPTURE;
      end 
       default: begin
         state <= HALT;
