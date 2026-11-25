@@ -6,13 +6,16 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+PROJECT_SOURCES = project.v defines.vh
 
 ifneq ($(GATES),yes)
 
 # RTL simulation:
 SIM_BUILD				= sim_build/rtl
 VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+# Behavioral model of the GF180 256x8 SRAM macro that project.v instantiates.
+# Simulation only - it is not part of the design.
+VERILOG_SOURCES += $(PWD)/sram_model.v
 
 else
 
@@ -25,6 +28,8 @@ COMPILE_ARGS    += -DSIM
 COMPILE_ARGS    += -DUNIT_DELAY=\#1
 VERILOG_SOURCES += $(PDK_ROOT)/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/primitives.v
 VERILOG_SOURCES += $(PDK_ROOT)/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/gf180mcu_fd_sc_mcu7t5v0.v
+# SRAM macro model (the hardened netlist only has the macro as a blackbox)
+VERILOG_SOURCES += $(PWD)/sram_model.v
 
 # this gets copied in by the GDS action workflow
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v

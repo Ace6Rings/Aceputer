@@ -1,19 +1,16 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-/* This testbench just instantiates the module and makes some convenient wires
-   that can be driven / tested by the cocotb test.py.
-*/
+/* Testbench wrapper: instantiates the project and exposes its pins to cocotb. */
 module tb ();
 
-  // Dump the signals to a FST file. You can view it with gtkwave or surfer.
+  // Dump the signals to an FST file. You can view it with gtkwave or surfer.
   initial begin
     $dumpfile("tb.fst");
     $dumpvars(0, tb);
     #1;
   end
 
-  // Wire up the inputs and outputs:
   reg clk;
   reg rst_n;
   reg ena;
@@ -27,8 +24,7 @@ module tb ();
   wire VGND = 1'b0;
 `endif
 
-  // Replace tt_um_example with your module name:
-  tt_um_example user_project (
+  tt_um_Ace6Rings user_project (
 
       // Include power ports for the Gate Level test:
 `ifdef GL_TEST
@@ -47,3 +43,4 @@ module tb ();
   );
 
 endmodule
+`default_nettype wire
