@@ -80,7 +80,7 @@ wire prefetch_start =
      ((OP_CODE != `OP_LOAD) &&
       (OP_CODE != `OP_STORE) &&
       (OP_CODE != `OP_HALT) &&
-      (OP_CODE != `OP_JZ) &&
+      (OP_CODE != `OP_JZ) && //updates pc before prefetching so its chill
       (OP_CODE != `OP_JNZ)));
 wire prefetch_issue = prefetch_start || prefetch_flag;
 
@@ -197,8 +197,8 @@ always @(posedge clk) begin
                     reg_file[rd] <= reg_file[rd] >> 1; // shift right
          `OP_HALT: state <= HALT; // halt the processor
 
-         `OP_JZ: if (reg_file[rd] == 8'h00) pc <= instruction[8:4]; 
-         `OP_JNZ: if (reg_file[rd] != 8'h00) pc <= instruction[8:4]; 
+         `OP_JZ: if (reg_file[rd] == 8'h00) pc <= instruction[8:2]; //7 bits long cuz pc is 7 bits long cuz i only have 256 bytes of ram, so max 128 instructions.
+         `OP_JNZ: if (reg_file[rd] != 8'h00) pc <= instruction[8:2]; 
          `OP_OUT: begin
           output_reg <= {reg_file[rs1], reg_file[rs2]};
           state <= OUTPUT;
