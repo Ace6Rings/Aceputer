@@ -33,6 +33,7 @@ reg [2:0] state;
 // Instruction memory and program counter
 reg [6:0] pc; // program counter
 reg [6:0] write_pointer;    // points to the next instruction to be written in instruction memory
+reg instruction_complete;
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
 reg [15:0] out;
@@ -53,11 +54,11 @@ assign rs2  = instruction[5:3];
 
 // SRAM 
 wire [7:0] sram_dout; // data output from sram
-wire sram_str  = rst_n && (state != READ_WAIT) && ((state == EXECUTE && OP_CODE == `OP_STORE) || state == PROGRAM_WRITE); // flag for writing to sram, programs stored in sram.
+wire sram_str  = rst_n && (state != READ_WAIT) && ((state == EXECUTE && OP_CODE == `OP_STORE && !instruction_complete) || state == PROGRAM_WRITE); // flag for writing to sram, programs stored in sram.
 wire sram_read = rst_n && ((prefetch_issue) || (state == PROGRAM_READ) || ((state == READ_WAIT) && (OP_CODE == `OP_LOAD))); // flag for reading from sram, active high
 wire [7:0] sram_addr, sram_din;
 assign sram_din = (state == PROGRAM_WRITE) ? (byte_sel ? instruction_reg[0][15:8] : instruction_reg[0][7:0]) : reg_file[rd];
-wire [6:0] prefetch_word_addr = prefetch_start ? (pc + 7'd1) : prefetch_reg;
+wire [6:0] prefetch_word_addr = prefetch_start ? (instruction_complete ? pc : pc + 7'd1) : prefetch_reg;
 assign sram_addr = (state == PROGRAM_WRITE) ? {write_pointer, byte_sel} :
                    (state == PROGRAM_READ) ? {pc, byte_sel} :
                    prefetch_issue ? {prefetch_word_addr, byte_sel} :
@@ -74,11 +75,12 @@ wire prefetch_start =
     !prefetch_flag &&
     !prefetch_pending &&
     !prefetch_buffer_valid &&
-    (OP_CODE != `OP_LOAD) &&
-    (OP_CODE != `OP_STORE) &&
-    (OP_CODE != `OP_HALT) &&
-    (OP_CODE != `OP_JZ) &&
-    (OP_CODE != `OP_JNZ);
+    (instruction_complete ||
+     ((OP_CODE != `OP_LOAD) &&
+      (OP_CODE != `OP_STORE) &&
+      (OP_CODE != `OP_HALT) &&
+      (OP_CODE != `OP_JZ) &&
+      (OP_CODE != `OP_JNZ)));
 wire prefetch_issue = prefetch_start || prefetch_flag;
 
 gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
@@ -112,6 +114,7 @@ always @(posedge clk) begin
     state <= PROGRAM;
     pc <= 8'd0;
     write_pointer <= 7'd0;
+    instruction_complete <= 1'b0; 
     byte_sel <= 1'b0;
     prefetch_reg <= 7'd0;
     prefetch_flag <= 1'b0;
@@ -148,6 +151,14 @@ always @(posedge clk) begin
       
      end
      EXECUTE: begin
+       if (instruction_complete) begin
+         if (prefetch_buffer_valid) begin
+           instruction_reg[0] <= instruction_reg[1];
+           prefetch_buffer_valid <= 1'b0;
+           instruction_complete <= 1'b0;
+         end
+       end
+       else begin
         if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
           pc <= pc + 1'b1;
         if ((OP_CODE != `OP_OUT) && (OP_CODE != `OP_HALT))
@@ -193,6 +204,20 @@ always @(posedge clk) begin
          end
          default:; //does jack shit
         endcase
+
+        if (OP_CODE != `OP_HALT) begin // CHECK IF REG 1 IS A VALID INSTRUCTION. IF NOT, THEN IT STALLS THE CPU.
+          if (prefetch_buffer_valid &&
+              (OP_CODE != `OP_LOAD) &&
+              (OP_CODE != `OP_JZ) &&
+              (OP_CODE != `OP_JNZ)) begin
+            instruction_reg[0] <= instruction_reg[1];
+            prefetch_buffer_valid <= 1'b0; //resets to 0
+          end
+          else begin
+            instruction_complete <= 1'b1; //sets it to 1 if instruction is completed. this stalls the cpu if it continues to be 1.
+          end
+        end
+       end
       end
      READ_WAIT: begin
       state <= READ_CAPTURE;
@@ -250,7 +275,11 @@ always @(posedge clk) begin
         state <= HALT;
       end
    endcase
-if (prefetch_pending) begin //edge 2
+
+
+   //PREFETCHING
+
+if (prefetch_pending) begin //edge 2, sram_dout is already going to be valid data cuz it was requested 1 clock cycle before
   if (!prefetch_byte_sel_d) begin
     instruction_reg[1][7:0] <= sram_dout;
   end
@@ -262,16 +291,16 @@ end
 
 prefetch_pending <= prefetch_issue; //edge 1
 
-if (prefetch_issue) begin
-  prefetch_byte_sel_d <= byte_sel;
-  if (!byte_sel) begin
-    byte_sel <= 1'b1;
-    prefetch_flag <= 1'b1;
+if (prefetch_issue) begin 
+  prefetch_byte_sel_d <= byte_sel; //stores the requested byte_sel
+  if (!byte_sel) begin // requests the low byte
+    byte_sel <= 1'b1;  // makes it request the high byte next rising edge
+    prefetch_flag <= 1'b1; 
     if (prefetch_start)
-      prefetch_reg <= pc + 7'd1;
+      prefetch_reg <= prefetch_word_addr; //sends shit
   end
   else begin
-    byte_sel <= 1'b0;
+    byte_sel <= 1'b0; 
     prefetch_flag <= 1'b0;
   end
 end
