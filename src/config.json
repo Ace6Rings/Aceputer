@@ -34,9 +34,9 @@
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
   "//": "GF180 256x8 SRAM hard macro",
   "MACROS": {
-    "u_sram_ctrl.sram_inst": {
+    "gf180mcu_ocd_ip_sram256x": {
       "instances": {
-        "sram_inst": {
+        "u_sram_ctrl.sram_inst": {
           "location": [5, 5],
           "orientation": "S"
         }
