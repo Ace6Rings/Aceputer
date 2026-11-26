@@ -45,6 +45,9 @@ reg [15:0] instruction_output; //ONLY USED IF REQ_TYPE IS 1
 
 // for if req_type[1] is 1. otherwise just output directly
 
+reg byte_sel; // 1 = high byte, 0 = low byte
+initial byte_sel = 0;
+
 reg [7:0] low_byte;
 reg [7:0] high_byte;
 
@@ -56,12 +59,13 @@ wire [7:0] sram_dout;
 always @(*) begin
     case (req_type)
         READ_WORD: begin
-
+            sram_addr = req_addr
 
             
 
         end
         WRITE_WORD: begin
+            sram_addr = req_addr;
             
 
 
@@ -78,11 +82,13 @@ end
 
 always @(posedge clk) begin
     if (!rst_n) begin
-        //add shit here
+        byte_sel <= 1'b0;
+
     end
     else begin
         case (state)
             READ_WAIT: begin
+                
             
             end
             READ_CAPTURE: begin
