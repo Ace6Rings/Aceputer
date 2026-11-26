@@ -1,19 +1,80 @@
 module sram_controller (
-    input 
+    input   wire      clk,
+    input   wire      rst_n,
+
+    input   wire[7:0]  req_addr, //address
+    input   wire[7:0]  req_wdata,//write dataa
+    input   wire[1:0]  req_type, //least significant bit is read or write, 0 = read, write = 1. most significant bit is req legntth, 0 = 8 bits, 1 = 16 bits
+
+    output  wire[15:0] sram_out //change this name later, confusing with dout
+    
+);
+//MEMORY CONTROL HAVE NO SAFEGUARDS, ITS ALL UP TO THE PROGRAMMER
+//THIS IS BASED ON LINE 57-96 IN project.v in the MAIN branch
+gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
+  .CLK  (clk),  // clock
+  .A    (sram_addr),  // address
+  .D    (sram_din),  // put data from register a into sram
+  .Q    (sram_dout),
+  .CEN  (!(sram_str || sram_read)),  // sram en, active low
+  .GWEN (!(sram_str)),  // sram write en, active low
+  .WEN  (8'b00000000)  // might change this, allows rewriting of all bits
+);
+
+localparam [1:0] READ_PROGRAM  = 2'b01,
+                 WRITE_PROGRAM = 2'b11,
+                 READ_REG      = 2'00, //name is confusing, change later. but it just means it is reading sram for only one cell and is meant to be put in reg_file. basically opcode is load
+                 WRITE_REG     = 2'10; //basically used for when opcode is store
+
+//basic functions ig
+wire [7:0] sram_addr;
+wire [7:0] sram_dout;  
+wire sram_str;
+wire sram_read;
+
+//READ INSTRUCTIONS
+
+reg [15:0] instruction_output; //ONLY USED IF REQ_TYPE IS 1
+
+//WRITE INSTRUCTIONS
+
+reg [7:0] low_byte;
+reg [7:0] high_byte;
+
+always @(*) begin
+    case (req_type)
+        READ_PROGRAM: begin
+            
+
+
+
+
+        end
+        WRITE_PROGRAM: begin
+            
 
 
 
 
 
+        end
+        READ_REG: begin
+            
+        end
+        WRITE_REG: begin
+            
+        end
+
+
+
+end
+
+
+
+
+    
 
 
 
 
 
-
-
-
-
-
-
-)
