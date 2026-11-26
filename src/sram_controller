@@ -28,7 +28,6 @@ localparam [1:0] READ_PROGRAM  = 2'b01,
 
 //basic functions ig
 wire [7:0] sram_addr;
-wire [7:0] sram_dout;  
 wire sram_str;
 wire sram_read;
 
@@ -36,25 +35,26 @@ wire sram_read;
 
 reg [15:0] instruction_output; //ONLY USED IF REQ_TYPE IS 1
 
-//WRITE INSTRUCTIONS
+// for if req_type[1] is 1. otherwise just output directly
 
 reg [7:0] low_byte;
 reg [7:0] high_byte;
+
+// for if req_type[1] is 0
+wire [7:0] sram_dout;  
+
+
 
 always @(*) begin
     case (req_type)
         READ_PROGRAM: begin
             
 
-
-
+            
 
         end
         WRITE_PROGRAM: begin
             
-
-
-
 
 
         end
@@ -67,6 +67,12 @@ always @(*) begin
 
 
 
+end
+
+always @(posedge clk) begin
+    if (!rst_n) begin
+        //add shit here
+    end
 end
 
 
