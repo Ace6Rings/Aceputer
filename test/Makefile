@@ -6,7 +6,7 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v defines.vh
+PROJECT_SOURCES = project.v defines.vh sram_controller.v
 
 ifneq ($(GATES),yes)
 

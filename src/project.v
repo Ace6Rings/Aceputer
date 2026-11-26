@@ -19,14 +19,13 @@ module tt_um_Ace6Rings (
 `include "defines.vh"
 
 
-localparam [2:0] PROGRAM   = 3'b000,
-                 EXECUTE   = 3'b001,
-                 HALT      = 3'b010,
-                 READ_WAIT = 3'b011,
-                 READ_CAPTURE = 3'b100, // wait for sram to send data back before reading sram_dout
-                 OUTPUT = 3'b101,
-                 PROGRAM_WRITE = 3'b110,
-                 PROGRAM_READ = 3'b111;
+localparam [2:0] PROGRAM       = 3'b000,
+                 EXECUTE       = 3'b001,
+                 HALT          = 3'b010,
+                 MEM_WAIT      = 3'b011,
+                 OUTPUT        = 3'b100,
+                 PROGRAM_WRITE = 3'b101,
+                 PROGRAM_READ  = 3'b110; //program read, write, and memwait does the same stuff. maybe simplify later
 integer i;
 reg [2:0] state;
 
@@ -34,7 +33,6 @@ reg [2:0] state;
 reg [6:0] pc; // program counter
 reg [6:0] write_pointer;    // points to the next instruction to be written in instruction memory
 reg instruction_complete;
-reg program_read_active;
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
 reg [15:0] out;
@@ -54,22 +52,27 @@ assign rs2  = instruction[5:3];
 
 
 // SRAM 
-wire [7:0] sram_dout; // data output from sram. sorry to anyone who have to read ts
-wire sram_str  = rst_n && (state != READ_WAIT) && ((state == EXECUTE && OP_CODE == `OP_STORE && !instruction_complete) || state == PROGRAM_WRITE); // flag for writing to sram, programs stored in sram.
-wire sram_read = rst_n && ((prefetch_issue) || (state == PROGRAM_READ) || ((state == READ_WAIT) && (OP_CODE == `OP_LOAD))); // flag for reading from sram, active high
-wire [7:0] sram_addr, sram_din;
-assign sram_din = (state == PROGRAM_WRITE) ? (byte_sel ? instruction_reg[0][15:8] : instruction_reg[0][7:0]) : reg_file[rd];
+sram_controller u_sram_ctrl (
+    .clk       (clk),
+    .rst_n     (rst_n),
+    .req_valid (req_valid),
+    .req_addr  (req_addr),
+    .req_wdata (req_wdata),
+    .req_type  (req_type),
+    .resp_done (resp_done),
+    .req_rdy   (req_rdy),
+    .out_rdy   (out_rdy),
+    .sram_out  (sram_out)
+);
+
+
 wire [6:0] prefetch_word_addr = prefetch_start ? (instruction_complete ? pc : pc + 7'd1) : prefetch_reg;
-assign sram_addr = (state == PROGRAM_WRITE) ? {write_pointer, byte_sel} :
-                   (state == PROGRAM_READ) ? {pc, byte_sel} :
-                   prefetch_issue ? {prefetch_word_addr, byte_sel} :
-                   instruction[8:1]; //holy shit this is unreadable
+
 reg [7:0] sram_store;
 reg [6:0] prefetch_reg;
-reg prefetch_flag;
-reg prefetch_pending;
-reg prefetch_byte_sel_d;
+
 reg prefetch_buffer_valid;
+
 wire prefetch_start =
     rst_n &&
     (state == EXECUTE) &&
@@ -84,16 +87,6 @@ wire prefetch_start =
       (OP_CODE != `OP_JNZ)));
 wire prefetch_issue = prefetch_start || prefetch_flag;
 
-gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
-  .CLK  (clk),  // clock
-  .A    (sram_addr),  // address
-  .D    (sram_din),  // put data from register a into sram
-  .Q    (sram_dout),
-  .CEN  (!(sram_str || sram_read)),  // sram en, active low
-  .GWEN (!(sram_str)),  // sram write en, active low
-  .WEN  (8'b00000000)  // might change this, allows rewriting of all bits
-);
-
 //uio_oe 
 reg [7:0] uio_oe_reg;
 assign uio_oe = uio_oe_reg; 
@@ -102,7 +95,6 @@ wire [8:0] add_sum = {1'b0, reg_file[rs1]} + {1'b0, reg_file[rs2]} + (instructio
 
 //WRITE PROGRAM TO MEMORY
 
-reg byte_sel; // 0 = low byte, 1 = high byte
 reg [15:0] instruction_reg[1:0]; //instruction reg
 reg OP_HALT_FLAG; //0 if opcode is NOT OP_HALT, 1 if it is.
 
@@ -118,8 +110,6 @@ always @(posedge clk) begin
     pc <= 8'd0;
     write_pointer <= 7'd0;
     instruction_complete <= 1'b0; 
-    program_read_active <= 1'b0;
-    byte_sel <= 1'b0;
     prefetch_reg <= 7'd0;
     prefetch_flag <= 1'b0;
     prefetch_pending <= 1'b0;
