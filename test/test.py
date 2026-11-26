@@ -31,6 +31,7 @@ async def reset(dut):
     dut.ena.value = 1
     dut.uio_in.value = 0
     dut.rst_n.value = 0 
+    dut.ui_in.value = 0
     #reset cpu and clear registers
     await ClockCycles(dut.clk, 5) # wait for 5 clock cycles
     dut.rst_n.value = 1
@@ -41,7 +42,7 @@ async def run_program(dut, program, n_outputs):
     for word in program:
         dut.ui_in.value = word & 0xFF
         dut.uio_in.value = (word >> 8) & 0xFF
-        await ClockCycles(dut.clk, 3) #maybe do 2? if 3 doesn't work, do 2
+        await ClockCycles(dut.clk, 5) #maybe do 2? if 3 doesn't work, do 2
 
     for _ in range(20 * len(program) + 1000): #set it to some random ass number
         await RisingEdge(dut.clk)
