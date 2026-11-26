@@ -4,9 +4,11 @@ module sram_controller (
     input   wire      clk,
     input   wire      rst_n,
 
+    input   wire       req,      //1 if cpu requested to do something. switch state to the appropriate thing
     input   wire[7:0]  req_addr, //address
     input   wire[15:0] req_wdata,//write data. 
     input   wire[1:0]  req_type, //least significant bit is read or write, 0 = read, write = 1. most significant bit is req legntth, 0 = 8 bits, 1 = 16 bits
+
 
     output  wire       req_rdy, //see if sram_out is valid. 1 for true, 0 for false. if 1, cpu will take that value. if it is a write, then 1 = write successful, 0 = failed
     output  wire[15:0] sram_out //change this name later, confusing with dout
@@ -35,7 +37,8 @@ localparam [1:0] READ_WAIT    = 2'b00,
                  READ_CAPTURE = 2'b01,
                  WRITE        = 2'b10,
                  IDLE         = 2'b11;
-reg [1:0] state;
+// MISC
+reg [1:0] state, next_state;
 //basic functions ig
 wire [7:0] sram_addr;
 wire sram_str;
@@ -63,37 +66,36 @@ wire [7:0] sram_dout;
 
 
 always @(*) begin
-    case (req_type)
-        READ_WORD: begin
-            state = READ_WAIT;
-            sram_read = 1'b1;
-
+    if (req == 1'b1) begin
+       case (req_type)
+           READ_WORD: begin
+                next_state = READ_WAIT;
+                sram_read = 1'b1;
+            end
+           WRITE_WORD: begin
+                next_state = WRITE;
             
-
-        end
-        WRITE_WORD: begin
-            state = WRITE;
-            
-
-
-        end
-        READ_BYTE: begin
-            sram_read = 1'b1
-            sram_addr = req_addr; //can be done combinationally since req_addr doesn't change
-
-            
-        end
-        WRITE_BYTE: begin
-            sram_str = 1'b1
-            sram_addr = req_addr; // same here
-            sram_din = req_wdata[7:0]; 
-            state = WRITE;
-        end
-    endcase
-    if (req_rdy == 1) begin
-        sram_out = instruction_output;
-        req_rdy = 0;
-        state = IDLE;
+           end
+           READ_BYTE: begin
+                sram_read = 1'b1
+                sram_addr = req_addr; //can be done combinationally since req_addr doesn't change
+                next_state = READ_WAIT;
+            end
+            WRITE_BYTE: begin
+                sram_str = 1'b1
+                sram_addr = req_addr; // same here
+                sram_din = req_wdata[7:0]; 
+                next_state = WRITE;
+           end
+       endcase
+       else begin
+        next_state = IDLE;
+       end
+      if (req_rdy == 1) begin
+          sram_out = instruction_output;
+          req_rdy = 0;
+          next_state <= IDLE;
+       end
     end
 end
 
@@ -104,10 +106,10 @@ always @(posedge clk) begin
 
     end
     else begin
+        state <= next_state;
         case (state)
             READ_WAIT: begin
                 state <= READ_CAPTURE:
-            
             end
             READ_CAPTURE: begin
                 case (req_type)
@@ -149,6 +151,10 @@ always @(posedge clk) begin
                             end
                     end
             end
+            IDLE: begin
+                //does nothing. switching states is done combinationally
+            end
+
     end
 end
 
