@@ -87,7 +87,7 @@ wire prefetch_start =
     (state == EXECUTE) &&
     req_rdy &&
     !req_valid &&
-    !prefetch_active $$
+    !prefetch_active &&
     !prefetch_buffer_valid &&
     (instruction_complete ||
      ((OP_CODE != `OP_LOAD) &&
@@ -161,8 +161,8 @@ end
          end
        end
        else begin
-        if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_HALT))
-          pc <= pc + 1'b1;
+        if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_STORE) && (OP_CODE != `OP_HALT))
+          pc <= pc + 7'd1;
         if ((OP_CODE != `OP_OUT) && (OP_CODE != `OP_HALT))
           uio_oe_reg <= 8'h00;
 
@@ -186,8 +186,24 @@ end
                    reg_file[rd] <= {7'b0000000, (reg_file[rs1] == reg_file[rs2])};
          `OP_LDI: if (rd != 3'b000)
                     reg_file[rd] <= instruction[8:1];
-         `OP_STORE: sram_store <= instruction[8:1];   //nothing happens                    
-         `OP_LOAD: state <= READ_WAIT;  // go to READ_WAIT state to read from sram
+         `OP_STORE: begin
+                      if (req_rdy && !req_valid && !prefetch_active) begin
+                        req_valid <= 1'b1;
+                        req_type  <= 2'b11; // WRITE_BYTE
+                        req_addr  <= instruction[8:1];
+                        req_wdata <= {8'd0, reg_file[rd]};
+                        state     <= MEM_WAIT;
+                      end
+         end
+         `OP_LOAD: begin
+                     if (req_rdy && !req_valid && !prefetch_active) begin
+                        req_valid <= 1'b1;
+                         req_type  <= 2'b10; // READ_BYTE
+                         req_addr  <= instruction[8:1];
+                         state     <= MEM_WAIT;
+                     end
+         end
+        
          `OP_MOV: begin
           if (rd != 3'b000)
             reg_file[rd] <= reg_file[rs1];
@@ -207,7 +223,7 @@ end
          default:; //does jack shit
         endcase
 
-        if (OP_CODE != `OP_HALT) begin // CHECK IF REG 1 IS A VALID INSTRUCTION. IF NOT, THEN IT STALLS THE CPU.
+        if ((OP_CODE != `OP_HALT) && (OP_CODE != `OP_LOAD) && (OP_CODE != `OP_STORE)) begin
           if (prefetch_buffer_valid &&
               (OP_CODE != `OP_LOAD) &&
               (OP_CODE != `OP_JZ) &&
@@ -220,31 +236,35 @@ end
           end
         end
        end
-      end
-     READ_WAIT: begin
-      state <= READ_CAPTURE;
+     if (prefetch_active && out_rdy) begin
+               instruction_reg[1] <= sram_out;
+               prefetch_buffer_valid <= 1'b1;
+               prefetch_active <= 1'b0;
+          end
+          
+     if (prefetch_start) begin
+               req_valid  <= 1'b1;
+               req_type   <= 2'b00; // READ_WORD
+               req_addr   <= {prefetch_word_addr, 1'b0};
+               prefetch_active <= 1'b1;
      end
-     READ_CAPTURE: begin
-        if (program_read_active) begin
-          if (!byte_sel) begin
-            instruction_reg[0][7:0] <= sram_dout;
-            byte_sel <= 1'b1;
-            state <= PROGRAM_READ;
-          end
-          else begin
-            instruction_reg[0][15:8] <= sram_dout;
-            byte_sel <= 1'b0;
-            program_read_active <= 1'b0;
-            state <= EXECUTE;
-          end
-        end
-        else begin
-          if (rd != 3'b000) begin
-            reg_file[rd] <= sram_dout;  // register zero is read-only
-          end
-          pc <= pc + 1'b1;
-          state <= EXECUTE;
-        end
+  end
+  
+     MEM_WAIT: begin
+       if (out_rdy) begin
+         if ((OP_CODE == `OP_LOAD) && (rd != 3'b000))
+           reg_file[rd] <= sram_out[7:0];
+         pc <= pc + 7'd1;
+         if (prefetch_buffer_valid) begin
+           instruction_reg[0]    <= instruction_reg[1];
+           prefetch_buffer_valid <= 1'b0;
+           instruction_complete  <= 1'b0;
+         end 
+         else begin
+           instruction_complete  <= 1'b1;
+         end
+         state <= EXECUTE;
+       end
      end
 
      OUTPUT: begin
@@ -259,59 +279,29 @@ end
         // output the output_reg indefinitely
       end
      PROGRAM_WRITE: begin
-       case (byte_sel) //one bit reg that specifies if the write is low byte or high
-        1'b0: begin
-          byte_sel <= 1'b1;
-        end
-        1'b1: begin
-          byte_sel <= 1'b0;
-          state <= PROGRAM;
-          write_pointer <= write_pointer + 7'd1;
-        end
-       endcase
-       if (OP_HALT_FLAG == 1'b1 && (byte_sel == 1'b1)) begin //fix byte_sel logic later
-        state <= PROGRAM_READ;
-        byte_sel <= 1'b0;
-        pc <= 7'd0;
-        program_read_active <= 1'b1;
+       if (out_rdy) begin
+         if (OP_HALT_FLAG == 1'b1) begin
+           pc        <= 7'd0;
+           req_valid <= 1'b1;
+           req_type  <= 2'b00; // READ_WORD
+           req_addr  <= 8'd0;
+           state     <= PROGRAM_READ;
+         end 
+         else begin
+           write_pointer <= write_pointer + 7'd1;
+           state <= PROGRAM;
+         end
        end
      end
-     PROGRAM_READ: begin //basically just used to start the program
-      state <= READ_CAPTURE;
-     end 
-      default: begin
-        state <= HALT;
-      end
-   endcase
-
-
-   //PREFETCHING
-
-if (prefetch_pending) begin //edge 2, sram_dout is already going to be valid data cuz it was requested 1 clock cycle before
-  if (!prefetch_byte_sel_d) begin
-    instruction_reg[1][7:0] <= sram_dout;
-  end
-  else begin
-    instruction_reg[1][15:8] <= sram_dout; //edge 3
-    prefetch_buffer_valid <= 1'b1;
-  end
-end
-
-prefetch_pending <= prefetch_issue; //edge 1
-
-if (prefetch_issue) begin 
-  prefetch_byte_sel_d <= byte_sel; //stores the requested byte_sel
-  if (!byte_sel) begin // requests the low byte
-    byte_sel <= 1'b1;  // makes it request the high byte next rising edge
-    prefetch_flag <= 1'b1; 
-    if (prefetch_start)
-      prefetch_reg <= prefetch_word_addr; //sends shit
-  end
-  else begin
-    byte_sel <= 1'b0; 
-    prefetch_flag <= 1'b0;
-  end
-end
+     PROGRAM_READ: begin
+           if (out_rdy) begin
+           instruction_reg[0]   <= sram_out;
+           instruction_complete <= 1'b0;
+           state <= EXECUTE;
+           end
+     end
+     default: state <= HALT;
+    endcase
   end
 end
 endmodule
