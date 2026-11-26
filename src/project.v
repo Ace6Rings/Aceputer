@@ -97,6 +97,8 @@ gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
 //uio_oe 
 reg [7:0] uio_oe_reg;
 assign uio_oe = uio_oe_reg; 
+reg carry;
+wire [8:0] add_sum = {1'b0, reg_file[rs1]} + {1'b0, reg_file[rs2]} + (instruction[0] ? {8'd0, carry} : 9'd0); //INSTRUCTION[0] DIFFERENTIATES BETWEEN ADD AND ADD WITH NO CARRY TO PREVENT ADDING 1'd1 TO THE NEXT ADD INSTRUCTION THAT IS UNRELATTED
 
 //WRITE PROGRAM TO MEMORY
 
@@ -127,6 +129,7 @@ always @(posedge clk) begin
     output_reg <= 16'h000;
     uio_oe_reg <= 8'h00; // default to input
     out <= 16'h000;
+    carry <= 1'b0;
   end
   
   else begin
@@ -166,8 +169,11 @@ always @(posedge clk) begin
           uio_oe_reg <= 8'h00;
 
         case (OP_CODE)
-         `OP_ADD: if (rd != 3'b000)
-                    reg_file[rd] <= reg_file[rs1] + reg_file[rs2];
+         `OP_ADD: begin 
+          carry <= add_sum[8];
+          if (rd != 3'b000)
+             reg_file[rd] <= add_sum[7:0]
+         end
          `OP_SUB: if (rd != 3'b000)
                     reg_file[rd] <= reg_file[rs1] - reg_file[rs2];
          `OP_ADDI:  begin
