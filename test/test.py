@@ -5,7 +5,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
-CLK_NS = 20 # in ns, prolly should work
+CLK_NS = 100 # in ns, prolly should work
 
 #OPCODES
 
@@ -40,7 +40,7 @@ async def run_program(dut, program, n_outputs):
     seen = []
     for word in program:
         dut.ui_in.value = word & 0xFF
-        dut.uio_in.value == (word >> 8) & 0xFF
+        dut.uio_in.value = (word >> 8) & 0xFF
         await ClockCycles(dut.clk, 3) #maybe do 2? if 3 doesn't work, do 2
 
     for _ in range(20 * len(program) + 1000): #set it to some random ass number
@@ -61,7 +61,7 @@ async def run_program(dut, program, n_outputs):
 async def test_reset_idle(dut):
     await reset (dut)
     await ClockCycles(dut.clk, 20)
-    await int(dut.uio_oe.value) == 0x00 and bus(dut) == 0x0000 #resets cpu and see if uio_oe stays at 0x00 and outputs stay 0x0000
+    assert int(dut.uio_oe.value) == 0x00 and bus(dut) == 0x0000 #resets cpu and see if uio_oe stays at 0x00 and outputs stay 0x0000
 
 @cocotb.test()
 async def test_isa_and_memory(dut):
