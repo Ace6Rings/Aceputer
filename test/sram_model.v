@@ -18,7 +18,9 @@ module gf180mcu_ocd_ip_sram__sram256x8m8wm1 (
   output reg  [7:0] Q,
   input  wire       CEN,
   input  wire       GWEN,
-  input  wire [7:0] WEN
+  input  wire [7:0] WEN,
+  input  wire       VDD,
+  input  wire       VSS
 );
 
   reg [7:0] mem [0:255];
