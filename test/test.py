@@ -98,16 +98,24 @@ async def test_isa_and_memory(dut):
     assert await run_program(dut, prog, 4) == [0x0204, 0xFD01, 0x0100, 0xFD00]
 
 
+@cocotb.test()
+async def test_branches_and_halt(dut):
+prog = [
+imm(LDI, 1, 0), # r1 = 0
+imm(LDI, 2, 3), # loop counter = 3
+branch(JZ, 1, 4), # taken -> skip 3
+imm(LDI, 2, 99), # skipped
+branch(JZ, 2, 8), # not taken (r2 != 0)
+rr(OUT, 0, 2, 1), # outputs 0x0300, 0x0200, 0x0100
+imm(ADDI, 2, 0xFF), #  r2--
+branch(JNZ, 2, 5), # loop while r2 != 0
+HALT, # loading stops here
+imm(LDI, 1, 0xEE), # ignored after HALT
+rr(OUT, 0, 1, 1), # must not execute
+]
+assert await run_program(dut, prog, 3) == [0x0300, 0x0200, 0x0100]            
 
-
-
-
-
-
-
-
-
-    ]
-
-
-                     
+@cocotb.test()
+async def test_max_program(dut):
+prog = [imm(LDI, 1, 0xAB)] * 126 + [rr(OUT, 0, 1, 1)] # 127 words; word 127 forced to HALT
+assert await run_program(dut, prog, 1) == [0xABAB]
