@@ -172,7 +172,7 @@ always @(posedge clk) begin
          `OP_ADD: begin 
           carry <= add_sum[8];
           if (rd != 3'b000)
-             reg_file[rd] <= add_sum[7:0]
+             reg_file[rd] <= add_sum[7:0];
          end
          `OP_SUB: if (rd != 3'b000)
                     reg_file[rd] <= reg_file[rs1] - reg_file[rs2];
