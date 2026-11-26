@@ -35,7 +35,7 @@ reg [6:0] write_pointer;    // points to the next instruction to be written in i
 reg instruction_complete;
 // Instruction decoding
 wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
-reg [15:0] out;
+reg  [15:0] out;
 assign {uio_out[7:0], uo_out[7:0]} = out;
 wire [15:0] instruction = instruction_reg[0]; // instruction input
 wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instruction
@@ -64,20 +64,30 @@ sram_controller u_sram_ctrl (
     .out_rdy   (out_rdy),
     .sram_out  (sram_out)
 );
+reg req_valid;
+reg  [7:0] req_addr;
+reg  [15:0]req_wdata;
+reg  [1:0] req_type;
+reg  prefetch_active;
+wire resp_done = out_rdy;
+wire req_rdy;
+wire out_rdy;
+wire [15:0] sram_out;
 
 
-wire [6:0] prefetch_word_addr = prefetch_start ? (instruction_complete ? pc : pc + 7'd1) : prefetch_reg;
+wire [6:0] prefetch_word_addr = instruction_complete ? pc : (pc + 7'd1);
 
-reg [7:0] sram_store;
-reg [6:0] prefetch_reg;
+
+
 
 reg prefetch_buffer_valid;
 
 wire prefetch_start =
     rst_n &&
     (state == EXECUTE) &&
-    !prefetch_flag &&
-    !prefetch_pending &&
+    req_rdy &&
+    !req_valid &&
+    !prefetch_active $$
     !prefetch_buffer_valid &&
     (instruction_complete ||
      ((OP_CODE != `OP_LOAD) &&
@@ -85,7 +95,7 @@ wire prefetch_start =
       (OP_CODE != `OP_HALT) &&
       (OP_CODE != `OP_JZ) && //updates pc before prefetching so its chill
       (OP_CODE != `OP_JNZ)));
-wire prefetch_issue = prefetch_start || prefetch_flag;
+
 
 //uio_oe 
 reg [7:0] uio_oe_reg;
@@ -98,22 +108,20 @@ wire [8:0] add_sum = {1'b0, reg_file[rs1]} + {1'b0, reg_file[rs2]} + (instructio
 reg [15:0] instruction_reg[1:0]; //instruction reg
 reg OP_HALT_FLAG; //0 if opcode is NOT OP_HALT, 1 if it is.
 
-always @ (*) begin
-  
-end
 always @(posedge clk) begin
   if (!rst_n) begin
     for (i = 0; i < 8; i = i + 1) begin
       reg_file[i] <= 8'd0;
     end
     state <= PROGRAM;
-    pc <= 8'd0;
+    pc <= 7'd0;
     write_pointer <= 7'd0;
+    req_valid <= 1'b0;
+    req_addr <= 8'd0;
+    req_wdata <= 16'd0;
+    req_type  <= 2'b00;
+    prefetch_active <= 1'b0;
     instruction_complete <= 1'b0; 
-    prefetch_reg <= 7'd0;
-    prefetch_flag <= 1'b0;
-    prefetch_pending <= 1'b0;
-    prefetch_byte_sel_d <= 1'b0;
     prefetch_buffer_valid <= 1'b0;
     OP_HALT_FLAG <= 1'b0;
     output_reg <= 16'h000;
@@ -123,27 +131,27 @@ always @(posedge clk) begin
   end
   
   else begin
+    if (req_valid && req_rdy)
+        req_valid <= 1'b0;
     case (state)
-     PROGRAM: begin  // THE HOST MUST HOLD THE INSTRUCTION FOR 2 CLOCK CYCLES
-      if (write_pointer == 7'd127) begin
-        instruction_reg[0] <= {`OP_HALT, 12'b000000000000}; // force last instruction to be a halt
-        state <= PROGRAM_WRITE;
-        OP_HALT_FLAG <= 1'b1;
-      
-      end
-      else begin
-        instruction_reg[0] <= program_word; // write instruction to instruction memory
-        if (program_word[15:12] == `OP_HALT) begin
-          OP_HALT_FLAG <= 1'b1; 
-          state <= PROGRAM_WRITE;
+     PROGRAM: begin
+    if (req_rdy && !req_valid) begin
+        req_valid <= 1'b1;
+        req_type  <= 2'b01; // WRITE_WORD
+        req_addr  <= {write_pointer, 1'b0};
+        req_wdata <= (write_pointer == 7'd127) ? {`OP_HALT, 12'd0} : program_word;
+        state     <= PROGRAM_WRITE;
+
+        if (write_pointer == 7'd127) begin
+            instruction_reg[0] <= {`OP_HALT, 12'b000000000000};
+            OP_HALT_FLAG       <= 1'b1;
+        end else begin
+            instruction_reg[0] <= program_word;
+            if (program_word[15:12] == `OP_HALT)
+                OP_HALT_FLAG <= 1'b1;
         end
-        else begin
-       
-         state <= PROGRAM_WRITE;
-        end
-      end
-      
-     end
+    end
+end
      EXECUTE: begin
        if (instruction_complete) begin
          if (prefetch_buffer_valid) begin
@@ -180,9 +188,6 @@ always @(posedge clk) begin
                     reg_file[rd] <= instruction[8:1];
          `OP_STORE: sram_store <= instruction[8:1];   //nothing happens                    
          `OP_LOAD: state <= READ_WAIT;  // go to READ_WAIT state to read from sram
-         
-         
-               
          `OP_MOV: begin
           if (rd != 3'b000)
             reg_file[rd] <= reg_file[rs1];
