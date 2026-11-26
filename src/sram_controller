@@ -1,3 +1,5 @@
+`default_nettype none
+
 module sram_controller (
     input   wire      clk,
     input   wire      rst_n,
@@ -21,11 +23,17 @@ gf180mcu_ocd_ip_sram__sram256x8m8wm1 sram_inst (
   .WEN  (8'b00000000)  // might change this, allows rewriting of all bits
 );
 
-localparam [1:0] READ_PROGRAM  = 2'b01,
-                 WRITE_PROGRAM = 2'b11,
-                 READ_REG      = 2'00, //name is confusing, change later. but it just means it is reading sram for only one cell and is meant to be put in reg_file. basically opcode is load
-                 WRITE_REG     = 2'10; //basically used for when opcode is store
+localparam [1:0] READ_WORD  = 2'b01,
+                 WRITE_WORD = 2'b11,
+                 READ_BYTE  = 2'00, //name is confusing, change later. but it just means it is reading sram for only one cell and is meant to be put in reg_file. basically opcode is load
+                 WRITE_BYTE = 2'10; //basically used for when opcode is store
 
+
+//states
+localparam [1:0] READ_WAIT    = 2'b00,
+                 READ_CAPTURE = 2'b01,
+                 WRITE        = 2'b10;
+reg [1:0] state;
 //basic functions ig
 wire [7:0] sram_addr;
 wire sram_str;
@@ -47,31 +55,42 @@ wire [7:0] sram_dout;
 
 always @(*) begin
     case (req_type)
-        READ_PROGRAM: begin
-            
+        READ_WORD: begin
+
 
             
 
         end
-        WRITE_PROGRAM: begin
+        WRITE_WORD: begin
             
 
 
         end
-        READ_REG: begin
-            
+        READ_BYTE: begin
+            sram_read = 1'b1
+            sram_addr = req_addr;
         end
-        WRITE_REG: begin
-            
+        WRITE_BYTE: begin
+            sram_str = 1'b1
+            sram_addr = req_addr;
         end
-
-
-
 end
 
 always @(posedge clk) begin
     if (!rst_n) begin
         //add shit here
+    end
+    else begin
+        case (state)
+            READ_WAIT: begin
+            
+            end
+            READ_CAPTURE: begin
+                
+            end
+            WRITE: begin
+                
+            end
     end
 end
 
