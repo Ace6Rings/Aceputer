@@ -54,7 +54,7 @@ assign rs2  = instruction[5:3];
 
 
 // SRAM 
-wire [7:0] sram_dout; // data output from sram
+wire [7:0] sram_dout; // data output from sram. sorry to anyone who have to read ts
 wire sram_str  = rst_n && (state != READ_WAIT) && ((state == EXECUTE && OP_CODE == `OP_STORE && !instruction_complete) || state == PROGRAM_WRITE); // flag for writing to sram, programs stored in sram.
 wire sram_read = rst_n && ((prefetch_issue) || (state == PROGRAM_READ) || ((state == READ_WAIT) && (OP_CODE == `OP_LOAD))); // flag for reading from sram, active high
 wire [7:0] sram_addr, sram_din;

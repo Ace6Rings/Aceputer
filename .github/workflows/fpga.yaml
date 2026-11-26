@@ -15,5 +15,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Include FPGA SRAM model
+        run: |
+          python3 -c 'import re; t=open("info.yaml").read(); open("info.yaml","w").write(re.sub(r"(source_files:\s*\n)(\s*- )", r"\1\2sram_fpga.v\n\2", t))'
+
       - name: FPGA bitstream for TT ASIC Sim (ICE40UP5K)
         uses: TinyTapeout/tt-gds-action/fpga/ice40up5k@ttgf26c
