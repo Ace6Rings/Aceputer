@@ -21,4 +21,43 @@ branch = lambda op, rd, tgt: (op << 12) | ((rd & 7) << 9) | ((tgt & 0x7F) << 2)
 
 HALT = HALT_OP << 12
 
+#read uio and uo, and concatenate them
+def bus(dut):
+    return (int(dut.uio_out.value) << 8) | int(dut.uo_out.value)
+
+#start
+async def reset(dut):
+    cocotb.start_soon(Clock(dut.clk, CLK_NS, unit="ns").start())
+
+#reset cpu and clear registers
+dut.ena.value = 1
+dut.uio_in.value = 0
+dut.rst_n.value = 0
+
+await ClockCycles(dut.clk, 5) # wait for 5 clock cycles
+dut.rst_n.value = 1
+
+async def run_program(dut, program, n_outputs):
+    await reset(dut) #resets
+
+for word in program:
+    dut.ui_in.value = word & 0xFF
+    dut.uio_in.value == (word >> 8) & 0xFF
+    await ClockCycles(dut.clk, 3) #maybe do 2? if 3 doesn't work, do 2
+
+seen = []
+    for in_range(20 * len(program) + 1000) #set it to some random ass number
+
+await RisingEdge(dut.clk)
+    if int(dut.uio_oe.value) == 0xFF #check if state is HALT 
+
+val = bus(dut)
+     if val != (seen[-1] if seen else None):
+    seen.append(val) #prevents reading the same output. prolly unneeded?
+
+if len(seen) == n_outputs:
+    await ClockCycles(dut.clk, 40)
+    assert int(dut.uio_oe.value) == 0xFF
+    assert bus(dut) == val
+    return seen
 
