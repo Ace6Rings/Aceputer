@@ -78,31 +78,26 @@ wire [7:0] sram_dout;
 
 
 always @(*) begin
-    if ((req_valid == 1'b1) && (req_rdy == 1'b1)) begin
-
-       case (req_type) //since this is combinational, it cannot go in a register
-           READ_WORD: begin
+    if ((req_valid != 1'b1) && (req_rdy != 1'b1)) begin
+     /*  case (req_type) //since this is combinational, it cannot go in a register
+         READ_WORD: begin
                 next_state = READ_WAIT;
                 sram_read = 1'b1;
-            end
+            end 
            WRITE_WORD: begin
+                sram_str = 1'b1;
                 next_state = WRITE;
             
            end
            READ_BYTE: begin
                 sram_read = 1'b1;
-                sram_addr = req_addr; //can be done combinationally since req_addr doesn't change
                 next_state = READ_WAIT;
-            end
+            end  
             WRITE_BYTE: begin
                 sram_str = 1'b1;
-                sram_addr = req_addr; // same here
-                sram_din = req_wdata[7:0]; 
                 next_state = WRITE;
-           end
-       endcase
-    end
-    else begin
+           end 
+       endcase */
         next_state = IDLE;
     end
     if (out_rdy == 1) begin
@@ -115,6 +110,7 @@ end
 always @(posedge clk) begin
     if (!rst_n) begin
         byte_sel <= 1'b0;
+
     end
     else begin
         state <= next_state;
@@ -132,20 +128,22 @@ always @(posedge clk) begin
             READ_CAPTURE: begin
                 case (req_type_reg)
                     READ_BYTE: begin //since it is just one byte, just go do it directly.
-                        sram_out <= sram_dout; //get the data from sram and put it to the output
+                        sram_out <= sram_dout[7:0]; //get the data from sram and put it to the output
                         out_rdy <= 1;
+                        next_state <= IDLE;
                     end
                     READ_WORD: begin
                         case (byte_sel_d)
                             1'b0:begin
-                                  low_byte <= sram_dout;
+                                  low_byte <= sram_dout [7:0];
                                   byte_sel_d <= 1'b1;
                                   req_addr_reg <= req_addr_reg + 8'd1; //increment by 1 to write a word. least significant bit, 0 = low byte, 1 = high byte
                             end
                             1'b1: begin
-                                  high_byte <= sram_dout;
+                                  high_byte <= sram_dout[15:8];
                                   byte_sel_d <= 1'b0;
                                   out_rdy <= 1;
+                                  next_state <= IDLE;
                             end
                         endcase  
                     end
@@ -154,18 +152,19 @@ always @(posedge clk) begin
             WRITE: begin
                 case (req_type_reg)
                     WRITE_BYTE: begin
-                        sram_out <= 8'b01110010;
+                        out_rdy <= 1'b1;
+                        next_state <= IDLE;
                     end
                     WRITE_WORD: begin
                         case (byte_sel)
-                            1'b0: begin
+                            1'b0: begin // this is now redundant, since this case should never be true due to the logic in state= HALT
                                 byte_sel  <= 1'b1;
                                 sram_addr <= req_addr_reg;
                                 sram_din  <= req_wdata_reg[7:0];
                             end 
                             1'b1: begin
                                 byte_sel  <= 1'b0;
-                                sram_addr <= req_addr + 8'd1;
+                                sram_addr <= req_addr_reg + 8'd1;
                                 sram_din  <= req_wdata_reg[15:8];
                             end
                     endcase
@@ -177,7 +176,36 @@ always @(posedge clk) begin
                 req_addr_reg <= req_addr;
                 req_type_reg <= req_type;
                 req_wdata_reg <= req_wdata; // UPDATED ON THE SAME EDGE OF WHEN SRAM ACCEPTS A REQUEST, SO IT WORKS
-                end
+                case (req_state)
+                    READ_BYTE: begin 
+                        sram_addr <= req_addr;
+                        sram_read <= 1'b1;
+                        next_state <= READ_CAPTURE;
+                    end
+                    WRITE_BYTE: begin 
+                        sram_din  <= req_wdata[7:0];
+                        sram_addr <= req_addr; 
+                        next_state <= WRITE;
+                        sram_str <= 1'b1;
+                    end
+                    WRITE_WORD: begin
+                        sram_str <= 1'b1;
+                        next_state <= WRITE;
+                        //write first thingy;
+                        byte_sel <= 1'b1;
+                        sram_addr <= req_addr_reg;
+                        sram_din <= req_wdata_reg[7:0]
+                    end
+                    READ_WORD: begin
+                        sram_read  <= 1'b1;   
+                        sram_addr  <= req_addr; //requests the first byte
+                        byte_sel_d <= 1'b0; //set to 0, so that the low byte can be used
+                        next_state <= READ_CAPTURE;
+                    end
+                    
+
+                endcase
+                end  
                 else
                 req_rdy <= 1; //prolly inefficient
             end
