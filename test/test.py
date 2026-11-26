@@ -28,44 +28,39 @@ def bus(dut):
 #start
 async def reset(dut):
     cocotb.start_soon(Clock(dut.clk, CLK_NS, unit="ns").start())
-
-#reset cpu and clear registers
-dut.ena.value = 1
-dut.uio_in.value = 0
-dut.rst_n.value = 0
-
-await ClockCycles(dut.clk, 5) # wait for 5 clock cycles
-dut.rst_n.value = 1
+    dut.ena.value = 1
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0 
+    #reset cpu and clear registers
+    await ClockCycles(dut.clk, 5) # wait for 5 clock cycles
+    dut.rst_n.value = 1
 
 async def run_program(dut, program, n_outputs):
     await reset(dut) #resets
+    seen = []
+    for word in program:
+        dut.ui_in.value = word & 0xFF
+        dut.uio_in.value == (word >> 8) & 0xFF
+        await ClockCycles(dut.clk, 3) #maybe do 2? if 3 doesn't work, do 2
 
-for word in program:
-    dut.ui_in.value = word & 0xFF
-    dut.uio_in.value == (word >> 8) & 0xFF
-    await ClockCycles(dut.clk, 3) #maybe do 2? if 3 doesn't work, do 2
+    for _ in range(20 * len(program) + 1000): #set it to some random ass number
+        await RisingEdge(dut.clk)
+        if int(dut.uio_oe.value) == 0xFF: # check if state is HALT 
+            val = bus(dut)
+            if val != (seen[-1] if seen else None):
+                seen.append(val) #prevents reading the same output. prolly unneeded?
 
-seen = []
-    for in_range(20 * len(program) + 1000) #set it to some random ass number
-
-await RisingEdge(dut.clk)
-    if int(dut.uio_oe.value) == 0xFF #check if state is HALT 
-
-val = bus(dut)
-     if val != (seen[-1] if seen else None):
-    seen.append(val) #prevents reading the same output. prolly unneeded?
-
-if len(seen) == n_outputs:
-    await ClockCycles(dut.clk, 40)
-    assert int(dut.uio_oe.value) == 0xFF
-    assert bus(dut) == val
-    return seen
-assert False #assert false if for loop doesnt return seen
+            if len(seen) == n_outputs:
+                await ClockCycles(dut.clk, 40)
+                assert int(dut.uio_oe.value) == 0xFF
+                assert bus(dut) == val
+                return seen
+    assert False #assert false if for loop doesnt return seen
 
 @cocotb.test()
-async def test_reset_idle(dut)
+async def test_reset_idle(dut):
     await reset (dut)
-    await ClockCyles(dut.clk, 20)
+    await ClockCycles(dut.clk, 20)
     await int(dut.uio_oe.value) == 0x00 and bus(dut) == 0x0000 #resets cpu and see if uio_oe stays at 0x00 and outputs stay 0x0000
 
 @cocotb.test()
@@ -82,7 +77,7 @@ async def test_isa_and_memory(dut):
         rr(XOR, 5, 5, 1),
         rr(COMP, 6, 1, 1),
         rr(OUT, 0, 5, 6),
-        imm(LDI, 3, 0x81)
+        imm(LDI, 3, 0x81),
         rr(SHL, 3),            
         rr(SHR, 3),             
         rr(OUT, 0, 3, 7),       
@@ -100,22 +95,22 @@ async def test_isa_and_memory(dut):
 
 @cocotb.test()
 async def test_branches_and_halt(dut):
-prog = [
-imm(LDI, 1, 0), # r1 = 0
-imm(LDI, 2, 3), # loop counter = 3
-branch(JZ, 1, 4), # taken -> skip 3
-imm(LDI, 2, 99), # skipped
-branch(JZ, 2, 8), # not taken (r2 != 0)
-rr(OUT, 0, 2, 1), # outputs 0x0300, 0x0200, 0x0100
-imm(ADDI, 2, 0xFF), #  r2--
-branch(JNZ, 2, 5), # loop while r2 != 0
-HALT, # loading stops here
-imm(LDI, 1, 0xEE), # ignored after HALT
-rr(OUT, 0, 1, 1), # must not execute
-]
-assert await run_program(dut, prog, 3) == [0x0300, 0x0200, 0x0100]            
+    prog = [
+        imm(LDI, 1, 0), # r1 = 0
+        imm(LDI, 2, 3), # loop counter = 3
+        branch(JZ, 1, 4), # taken -> skip 3
+        imm(LDI, 2, 99), # skipped
+        branch(JZ, 2, 8), # not taken (r2 != 0)
+        rr(OUT, 0, 2, 1), # outputs 0x0300, 0x0200, 0x0100
+        imm(ADDI, 2, 0xFF), #  r2--
+        branch(JNZ, 2, 5), # loop while r2 != 0
+        HALT, # loading stops here
+        imm(LDI, 1, 0xEE), # ignored after HALT
+        rr(OUT, 0, 1, 1), # must not execute
+    ]
+    assert await run_program(dut, prog, 3) == [0x0300, 0x0200, 0x0100]            
 
 @cocotb.test()
 async def test_max_program(dut):
-prog = [imm(LDI, 1, 0xAB)] * 126 + [rr(OUT, 0, 1, 1)] # 127 words; word 127 forced to HALT
-assert await run_program(dut, prog, 1) == [0xABAB]
+    prog = [imm(LDI, 1, 0xAB)] * 126 + [rr(OUT, 0, 1, 1)] # 127 words; word 127 forced to HALT
+    assert await run_program(dut, prog, 1) == [0xABAB]
