@@ -76,7 +76,26 @@ async def test_isa_and_memory(dut):
         rr(ADD, 3, 1, 2),  #overflow
         rr(SUB, 4, 2, 1),  #underflow, check this and see if ts is right 
         rr(OUT, 0, 3, 4),  #should output some stuff
-        imm(ADDI, 2, 0xFF), #
+        imm(ADDI, 2, 0xFF), 
+        rr(MOV, 5, 1), 
+        rr(AND, 5, 5, 2),
+        rr(XOR, 5, 5, 1),
+        rr(COMP, 6, 1, 1),
+        rr(OUT, 0, 5, 6),
+        imm(LDI, 3, 0x81)
+        rr(SHL, 3),            
+        rr(SHR, 3),             
+        rr(OUT, 0, 3, 7),       
+        rr(SHR, 3),            
+        imm(STORE, 5, 0xF0),    
+        imm(LOAD, 4, 0xF0),    
+        imm(LDI, 0, 0x42),    #should be ignored since reg_file[0] is reserved 
+        rr(ADD, 0, 1, 2),     
+        rr(ADD, 4, 4, 0),      
+        rr(OUT, 0, 4, 3),      
+        HALT,                  
+    ]
+    assert await run_program(dut, prog, 4) == [0x0204, 0xFD01, 0x0100, 0xFD00]
 
 
 
