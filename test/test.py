@@ -60,4 +60,35 @@ if len(seen) == n_outputs:
     assert int(dut.uio_oe.value) == 0xFF
     assert bus(dut) == val
     return seen
+assert False #assert false if for loop doesnt return seen
 
+@cocotb.test()
+async def test_reset_idle(dut)
+    await reset (dut)
+    await ClockCyles(dut.clk, 20)
+    await int(dut.uio_oe.value) == 0x00 and bus(dut) == 0x0000 #resets cpu and see if uio_oe stays at 0x00 and outputs stay 0x0000
+
+@cocotb.test()
+async def test_isa_and_memory(dut):
+    prog = [
+        imm(LDI, 1, 0xFF), # r1 is set to 255
+        imm(LDI, 2, 0x03), # to 3
+        rr(ADD, 3, 1, 2),  #overflow
+        rr(SUB, 4, 2, 1),  #underflow, check this and see if ts is right 
+        rr(OUT, 0, 3, 4),  #should output some stuff
+        imm(ADDI, 2, 0xFF), #
+
+
+
+
+
+
+
+
+
+
+
+    ]
+
+
+                     
