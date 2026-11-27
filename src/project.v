@@ -34,15 +34,48 @@ reg [6:0] pc; // program counter
 reg [6:0] write_pointer;    // points to the next instruction to be written in instruction memory
 reg instruction_complete;
 // Instruction decoding
-wire [15:0] program_word = {uio_in[7:0], ui_in[7:0]}; // 16-bit instruction word from inputs
-reg  [15:0] out;
-assign {uio_out[7:0], uo_out[7:0]} = out;
+
+reg req_valid;
+reg  [7:0] req_addr;
+reg  [15:0]req_wdata;
+reg  [1:0] req_type;
+reg  prefetch_active;
+wire resp_done = out_rdy;
+wire req_rdy;
+wire out_rdy;
+wire [15:0] sram_out;
+
+
+reg         qspi_req_out;
+wire        qspi_dat_sent;
+wire [3:0]      qspi_miso;
+wire [15:0] qspi_word_out;
+wire      qspi_word_valid;
+wire      qspi_ack = (state == PROGRAM) && req_rdy && !req_valid && qspi_word_valid && (write_pointer != 7'd127);
+wire  [15:0] program_word = qspi_word_out;
+
+reg [15:0] instruction_reg[1:0]; //instruction reg
 wire [15:0] instruction = instruction_reg[0]; // instruction input
 wire [3:0] OP_CODE = instruction[15:12]; // opcode is upper 4 bits of instruction
 
 // Registers for operands and output
 reg [7:0] reg_file [7:0]; //operands
 reg  [15:0] output_reg;
+
+QSPI u_qspi (
+    .rst_n      (rst_n),
+    .clk        (clk),
+    .MOSI       (ui_in[3:0]),
+    .CS         (ui_in[4]),
+    .ack        (qspi_ack),
+    .req_out    (qspi_req_out),
+    .req_dat    (output_reg),
+    .dat_sent   (qspi_dat_sent),
+    .MISO       (qspi_miso),
+    .word_out   (qspi_word_out),
+    .word_valid (qspi_word_valid)
+);
+
 
 // operands
 wire [2:0] rs1, rs2, rd;
@@ -64,15 +97,7 @@ sram_controller u_sram_ctrl (
     .out_rdy   (out_rdy),
     .sram_out  (sram_out)
 );
-reg req_valid;
-reg  [7:0] req_addr;
-reg  [15:0]req_wdata;
-reg  [1:0] req_type;
-reg  prefetch_active;
-wire resp_done = out_rdy;
-wire req_rdy;
-wire out_rdy;
-wire [15:0] sram_out;
+
 
 
 wire [6:0] prefetch_word_addr = instruction_complete ? pc : (pc + 7'd1);
@@ -98,14 +123,15 @@ wire prefetch_start =
 
 
 //uio_oe 
-reg [7:0] uio_oe_reg;
-assign uio_oe = uio_oe_reg; 
+assign uo_out  = {2'b00, qspi_req_out, (state == HALT), qspi_miso};
+assign uio_out = 8'h00;
+assign uio_oe  = 8'h00;
+
 reg carry;
 wire [8:0] add_sum = {1'b0, reg_file[rs1]} + {1'b0, reg_file[rs2]} + (instruction[0] ? {8'd0, carry} : 9'd0); //INSTRUCTION[0] DIFFERENTIATES BETWEEN ADD AND ADD WITH NO CARRY TO PREVENT ADDING 1'd1 TO THE NEXT ADD INSTRUCTION THAT IS UNRELATTED
 
 //WRITE PROGRAM TO MEMORY
 
-reg [15:0] instruction_reg[1:0]; //instruction reg
 reg OP_HALT_FLAG; //0 if opcode is NOT OP_HALT, 1 if it is.
 
 always @(posedge clk) begin
@@ -124,10 +150,9 @@ always @(posedge clk) begin
     instruction_complete <= 1'b0; 
     prefetch_buffer_valid <= 1'b0;
     OP_HALT_FLAG <= 1'b0;
-    output_reg <= 16'h000;
-    uio_oe_reg <= 8'h00; // default to input
-    out <= 16'h000;
+    output_reg <= 16'h0000;
     carry <= 1'b0;
+    qspi_req_out <= 1'b0;
   end
   
   else begin
@@ -135,7 +160,7 @@ always @(posedge clk) begin
         req_valid <= 1'b0;
     case (state)
      PROGRAM: begin
-    if (req_rdy && !req_valid) begin
+    if (req_rdy && !req_valid && (qspi_word_valid || (write_pointer == 7'd127))) begin
         req_valid <= 1'b1;
         req_type  <= 2'b01; // WRITE_WORD
         req_addr  <= {write_pointer, 1'b0};
@@ -163,8 +188,6 @@ end
        else begin
         if ((OP_CODE != `OP_LOAD) && (OP_CODE != `OP_STORE) && (OP_CODE != `OP_HALT))
           pc <= pc + 7'd1;
-        if ((OP_CODE != `OP_OUT) && (OP_CODE != `OP_HALT))
-          uio_oe_reg <= 8'h00;
 
         case (OP_CODE)
          `OP_ADD: begin 
@@ -218,6 +241,7 @@ end
          `OP_JNZ: if (reg_file[rd] != 8'h00) pc <= instruction[8:2]; 
          `OP_OUT: begin
           output_reg <= {reg_file[rs1], reg_file[rs2]};
+          qspi_req_out <= 1'b1;
           state <= OUTPUT;
          end
          default:; //does jack shit
@@ -268,15 +292,13 @@ end
      end
 
      OUTPUT: begin
-      uio_oe_reg <= 8'hFF;
-      out <= output_reg;
-      state <= EXECUTE;
+      if (qspi_dat_sent) begin
+        qspi_req_out <= 1'b0;
+        state <= EXECUTE;
+      end
      end
 
-     HALT: begin
-      out <= output_reg;
-      uio_oe_reg <= 8'hFF; //switch them to output
-        // output the output_reg indefinitely
+     HALT: begin//nothing happens
       end
      PROGRAM_WRITE: begin
        if (out_rdy) begin
