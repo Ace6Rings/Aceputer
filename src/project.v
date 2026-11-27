@@ -158,6 +158,12 @@ always @(posedge clk) begin
   else begin
     if (req_valid && req_rdy)
         req_valid <= 1'b0;
+    if (prefetch_active && out_rdy) begin
+               instruction_reg[1] <= sram_out;
+               prefetch_buffer_valid <= 1'b1;
+               prefetch_active <= 1'b0;
+          end
+        
     case (state)
      PROGRAM: begin
     if (req_rdy && !req_valid && (qspi_word_valid || (write_pointer == 7'd127))) begin
@@ -260,11 +266,7 @@ end
           end
         end
        end
-     if (prefetch_active && out_rdy) begin
-               instruction_reg[1] <= sram_out;
-               prefetch_buffer_valid <= 1'b1;
-               prefetch_active <= 1'b0;
-          end
+     
           
      if (prefetch_start) begin
                req_valid  <= 1'b1;
