@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2026 Steven Xie
+ * SPDX-License-Identifier: Apache-2.0
+ */
 `default_nettype none
 module QSPI (
     input  wire             rst_n,

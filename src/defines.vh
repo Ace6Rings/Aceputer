@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2026 Steven Xie
+ * SPDX-License-Identifier: Apache-2.0
+ */
 `ifndef defines_vh
 `define defines_vh
 
